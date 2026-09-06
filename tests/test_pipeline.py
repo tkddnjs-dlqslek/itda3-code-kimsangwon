@@ -29,7 +29,7 @@ def test_strict_false_catches(tmp_path):
     with pytest.raises(Exception):
         predict_one(str(tmp_path / "bad.jpg"), strict=True)
     row = predict_one(str(tmp_path / "bad.jpg"), strict=False)
-    assert row["final_date"] == "NONE-NONE-NONE" and row["stage"] == "error"
+    assert row["final_date"] == "NONE" and row["stage"] == "error"
 
 
 def test_leading_zero_id_preserved(tmp_path):
