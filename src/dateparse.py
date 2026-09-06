@@ -63,8 +63,8 @@ _PATTERNS = [
     (re.compile(r"\b(?:exp|bbe|use by|best before|best by)\b\s*[:.]?\s*(\d{2})(\d{2})(\d{2})(?!\d)", re.I), "dmy", False),
     # 정확히 8자리일 때만 YYYYMMDD (13/14자리 바코드, 품목보고번호 배제)
     (re.compile(r"(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)"), "ymd", False),
-    # 부분: OCT.2021
-    (re.compile(MON + r"[a-z]*\.?\s*(\d{4})(?!\d)", re.I), "mon_y", False),
+    # 부분: OCT.2021 (OCT.o2021 처럼 앞에 o 가 붙어 5자리가 되는 경우도 _year 가 흡수)
+    (re.compile(MON + r"[a-z]*\.?\s*(\d{3,5})(?!\d)", re.I), "mon_y", False),
     # 부분: 11/2023
     (re.compile(r"(?<!\d)(\d{1,2})\s*/\s*(\d{4})(?!\d)"), "m_y", False),
     # 부분: 10.22 (extract_date 에서 만료 키워드가 있을 때만 채택)
