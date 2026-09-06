@@ -16,7 +16,7 @@ import dateparse
 
 __all__ = ["STAGES", "read", "hybrid_rec"]
 
-STAGES = ("s1", "s2", "rot90", "rot270", "rot180", "up2x", "fail")
+STAGES = ("s1", "s2", "rot90", "rot270", "rot180", "clahe", "up2x", "fail")
 
 # 채점 서버는 repo 루트에서 노트북을 돌린다. cwd 가 아니라 이 파일 기준으로 찾는다.
 _WEIGHTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "weights")
@@ -105,6 +105,14 @@ def read(path: str, retry_upscale: bool = False) -> tuple[list[str], str]:
         texts += rot
 
     if retry_upscale:
+        # 금속면, 저대비 인쇄: 대비 강화만으로 잡히는 경우 (확대는 오히려 방해)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        eq = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
+        cl = hybrid_rec(_crops(cv2.cvtColor(eq, cv2.COLOR_GRAY2BGR), loose=True))
+        if dateparse.extract_date(cl):
+            return cl, "clahe"
+        texts += cl
+        # 작은 글씨: 2배 확대
         up = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         big2x = hybrid_rec(_crops(up, loose=True))
         if dateparse.extract_date(big2x):
