@@ -34,7 +34,7 @@ def predict_one(path: str, strict: bool = True, retry_upscale: bool = False) -> 
             raise
         print(f"[ERROR] {image_id}: {type(e).__name__}: {e}")
         texts, stage, (y, m, d) = [], "error", _NONE
-        final = f"{y}-{m}-{d}"
+        final = "NONE"
     return {"image_id": image_id, "year": y, "month": m, "day": d,
             "final_date": final, "stage": stage, "texts": texts}
 
