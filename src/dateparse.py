@@ -22,6 +22,7 @@ class Candidate:
     text: str
     score: float
     why: list = field(default_factory=list)   # 점수 근거 (trace 용)
+    head: str = ""                             # 같은 줄에서 날짜 앞에 있던 글자
 
 
 # --- 정규화 ------------------------------------------------------------------
@@ -46,12 +47,14 @@ POST_MFG = re.compile(r"부터")
 # 접두형 키워드: "소비기한: / Best before:" 뒤에 날짜
 PRE_EXPIRY = re.compile(_EXP_WORDS, re.I)
 PRE_MFG = re.compile(_MFG_WORDS, re.I)
-_TIME_AFTER = re.compile(r"^\s*[.,]?\s*\d{1,2}\s*:\s*\d{2}")   # 날짜 바로 뒤 HH:MM
+_TIME_AFTER = re.compile(r"^\s*[.,/>]?\s*\d{1,2}\s*:\s*\d{2}")   # 날짜 바로 뒤 HH:MM
 
 # --- 패턴 --------------------------------------------------------------------
 SEP_K = r"\s*[.\-/,:·년월]{1,2}\s*"   # 국내 구분자 (쉼표, 콜론 오인식, ':.' 같은 2연속 포함)
 SEP_S = r"\s+"                          # 공백만
-SEP_D = r"\s*:?\s*[.\-/·,\s]\s*:?\s*"   # 수입품 구분자 (콜론이 곁다리로 붙은 '01 10 :2026' 허용)
+SEP_D = r"\s?[.\-/·,]\s?|\s"                # 수입품 구분자: 구두점(공백 허용) 또는 공백 한 칸
+SEP_DY = r"\s?[.\-/·,]\s?|\s+:?\s*"         # 연도 직전 구분자: '01 10 :2026' 의 곁다리 콜론 허용
+SEP_K2 = r"(?:" + SEP_K + r"|\s+)"           # 국내 2자리 연도: 공백만 있는 구분자도 허용 (26· 08  31)
 MON = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
 MONTHS = {n: i + 1 for i, n in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
 
@@ -61,8 +64,6 @@ _PATTERNS = [
     (re.compile(r"(?<!\d)(20\d{2})[.\s]+(\d{1,2})[.\s]+(\d(?: ?\d)?)(?!\d)"), "ymd_sp", False),
     # 연도 먼저 + 구분자. 뒤쪽 경계를 두지 않아 시각/LOT이 붙어도 통과 (2023.12.0610:13)
     (re.compile(r"(?<!\d)(\d{3,5})" + SEP_K + r"(\d{1,2})" + SEP_K + r"(\d{1,2})"), "ymd", False),
-    # 2026.0109 / 2026 0622 연도 뒤 월일이 붙은 형태
-    (re.compile(r"(?<!\d)(20\d{2})[.\-/\s](\d{2})(\d{2})(?!\d)"), "ymd", False),
     # 202006/01 처럼 연월이 붙고 일만 떨어진 형태
     (re.compile(r"(?<!\d)(\d{4})(\d{2})[/.\-](\d{1,2})(?!\d)"), "ymd", False),
     # AUG 11 2021
@@ -74,11 +75,13 @@ _PATTERNS = [
     # 29052026 / 25/032025 수입품 일월년 8자리 압축 (LOT 접합 허용)
     (re.compile(r"(?<!\d)(\d{2})/?(\d{2})(20\d{2})(?!\d)"), "dmy", False),
     # 31/12/2023 수입품 일-월-연
-    (re.compile(r"(?<!\d)(\d{1,2})" + SEP_D + r"(\d{1,2})" + SEP_D + r"(\d{3,5})(?!\d)"), "dmy", False),
+    (re.compile(r"(?<!\d)(\d{1,2})(?:" + SEP_D + r")(\d{1,2})(?:" + SEP_DY + r")(\d{3,5})(?!\d)"), "dmy", False),
+    # 2026.0109 / 2026 0622 연도 뒤 월일이 붙은 형태
+    (re.compile(r"(?<!\d)(20\d{2})[.\-/\s](\d{2})(\d{2})(?!\d)"), "ymd", False),
     # 25.12.10 국내 두 자리 연도 먼저 (연도로 성립할 때만 통과)
-    (re.compile(r"(?<!\d)(\d{2})" + SEP_K + r"(\d{1,2})" + SEP_K + r"(\d{1,2})(?!\d)"), "ymd", False),
+    (re.compile(r"(?<!\d)(\d{2})" + SEP_K2 + r"(\d{1,2})" + SEP_K2 + r"(\d{1,2})(?!\d)"), "ymd", False),
     # 10.10.21 두 자리 연도가 뒤 (위 규칙이 실패했을 때만 도달). 뒤에 :MM 이 오면 시각이라 제외
-    (re.compile(r"(?<!\d)(\d{1,2})" + SEP_D + r"(\d{1,2})" + SEP_D + r"(\d{2})(?!\d)(?!\s*:\s*\d{2})"), "dmy", False),
+    (re.compile(r"(?<!\d)(\d{1,2})(?:" + SEP_D + r")(\d{1,2})(?:" + SEP_D + r")(\d{2})(?!\d)(?!\s*:\s*\d{2})"), "dmy", False),
     # 정확히 8자리일 때만 YYYYMMDD (13/14자리 바코드, 품목보고번호 배제)
     (re.compile(r"(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)"), "ymd", False),
     # 6자리 압축 261027 / 091122: 년월일 먼저, 연도 범위 밖이면 일월년. 다른 날짜 없을 때만 쓰이도록 감점
@@ -94,12 +97,13 @@ _PATTERNS = [
 ]
 
 
-def _year(tok: str) -> int | None:
-    """연도 토큰 정규화. 5자리는 앞 자리 붙음, 3자리는 앞 자리 유실(20 + 끝 두 자리), 2자리는 20YY."""
+def _year(tok: str, last: bool = False) -> int | None:
+    """연도 토큰 정규화. 5자리는 앞 자리 붙음. 3자리는 연도가 앞이면 앞 자리 유실(20+끝 두 자리),
+    연도가 뒤(last)면 LOT 접합(20+앞 두 자리). 2자리는 20YY."""
     if len(tok) == 5:
         tok = tok[1:]
     if len(tok) == 3:
-        tok = "20" + tok[-2:]
+        tok = "20" + (tok[:2] if last else tok[-2:])
     if len(tok) == 2:
         tok = "20" + tok
     if len(tok) != 4:
@@ -125,7 +129,12 @@ def _parse(kind: str, g: tuple) -> tuple | None:
     if kind == "ymd_sp":
         return _complete(_year(g[0]), int(g[1]), int(g[2].replace(" ", "")))
     if kind == "dmy":
-        d, m, y = int(g[0]), int(g[1]), _year(g[2])
+        if len(g[2]) == 3:
+            # 26.06.227K: 국내 YY.MM.DD 뒤에 LOT 숫자가 붙은 형태를 먼저 본다 (국내 라벨이 다수)
+            k = _complete(_year(g[0]), int(g[1]), int(g[2][:2]))
+            if k:
+                return k
+        d, m, y = int(g[0]), int(g[1]), _year(g[2], last=True)
         # 일-월 기본, 그 순서가 달력에 없으면 월-일로 뒤집어 본다
         return _complete(y, m, d) or _complete(y, d, m)
     if kind == "c6":
@@ -172,11 +181,13 @@ def _year_token(kind: str, g: tuple) -> str:
     return "" if i is None else g[i]
 
 
+_DATE_ONLY_LINE = re.compile(r"^\s*\d{1,2}[.\-]\d{1,2}\s+[A-Za-z0-9\-]{2,8}\s*$")   # "12.19 D1758" 날짜 + LOT 만 있는 줄
+
+
 def find_candidates(text: str) -> list[Candidate]:
     """한 조각에서 날짜 후보를 뽑는다. 앞선 패턴이 잡은 구간은 뒤 패턴이 재사용하지 않는다."""
     norm = _norm(text)
     has_expiry = EXPIRY.search(norm) is not None
-    has_mfg = MFG.search(norm) is not None
     taken: list[tuple[int, int]] = []
     out: list[Candidate] = []
     for rx, kind, needs_kw in _PATTERNS:
@@ -194,16 +205,19 @@ def find_candidates(text: str) -> list[Candidate]:
             if parsed is None:
                 continue
             y, mo, d = parsed
-            tail = norm[e:]
-            # 연도 없는 월-일은 같은 조각에 '까지'가 있거나 바로 뒤에 시각(HH:MM)이 붙을 때만
-            if kind == "m_d" and not (POST_EXPIRY.search(norm) or _TIME_AFTER.match(tail)):
+            head, tail = norm[:s], norm[e:]
+            # 연도 없는 월-일: 뒤에 '까지'나 시각(HH:MM)이 붙거나, 날짜만 있는 짧은 줄일 때만
+            if kind == "m_d" and not (POST_EXPIRY.search(tail) or _TIME_AFTER.match(tail) or _DATE_ONLY_LINE.match(norm)):
                 continue
             why = []
             score = 0.0
-            if has_expiry:
+            # 접두형 키워드(소비기한:, Best before)는 줄 어디든, 조사형(까지/부터)은 날짜 뒤에 올 때만
+            if PRE_EXPIRY.search(norm) or POST_EXPIRY.search(tail):
                 score += 2.0; why.append("만료 키워드 +2")
-            if has_mfg:
+            if PRE_MFG.search(norm) or POST_MFG.search(tail) or re.search(r"lot", norm, re.I):
                 score -= 2.0; why.append("제조 키워드 -2")
+            if _TIME_AFTER.match(tail):
+                score -= 1.0; why.append("뒤에 시각 -1 (제조 시각일 가능성)")
             if y is not None and len(_year_token(kind, m.groups())) >= 3:
                 score += 0.5; why.append("4자리 연도 +0.5")
             if kind == "c6":
@@ -211,7 +225,7 @@ def find_candidates(text: str) -> list[Candidate]:
             if repaired:
                 why.append("무효 칸 제거 (부분 날짜)")
             taken.append((s, e))
-            out.append(Candidate(y, mo, d, m.group(0), score, why))
+            out.append(Candidate(y, mo, d, m.group(0), score, why, head))
     return out
 
 
@@ -235,13 +249,10 @@ def _rank(texts: list[str]) -> list[Candidate]:
             if POST_EXPIRY.search(nxt): ctx += 2.0; cwhy.append("뒤 조각 까지 +2")
             if POST_MFG.search(nxt): ctx -= 2.0; cwhy.append("뒤 조각 부터 -2")
         for c in find_candidates(t):
-            if c.y is None and c.m is not None and c.d is not None and ctx <= 0 and not POST_EXPIRY.search(own) \
-                    and not _TIME_AFTER.match(own[own.find(c.text) + len(c.text):]):
-                # 월-일 부분 날짜: 자기 조각 까지, 뒤 조각 까지, 시각 중 하나는 있어야
-                if not POST_EXPIRY.search(nxt):
-                    continue
-            c.score += ctx
-            c.why = c.why + cwhy
+            # 앞 조각 키워드는 날짜가 줄 맨 앞에 올 때만 붙인다 ("후면표기일 까지 20.08.25" 는 다른 문장)
+            blocked = re.search(r"[A-Za-z가-힣]", c.head) is not None
+            c.score += 0.0 if blocked else ctx
+            c.why = c.why + ([] if blocked else cwhy)
             cands.append(c)
     complete = [c for c in cands if None not in (c.y, c.m, c.d)]
     partial = [c for c in cands if c not in complete]
