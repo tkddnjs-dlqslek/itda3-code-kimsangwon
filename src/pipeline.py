@@ -2,7 +2,7 @@
 """이미지 폴더 -> submission 행. ocr.read 로 텍스트를 얻고 dateparse 로 날짜를 고른다."""
 from __future__ import annotations
 
-import os
+import json, os
 import time
 
 import pandas as pd
@@ -25,7 +25,9 @@ def list_images(input_dir: str) -> list[str]:
 def predict_one(path: str, strict: bool = True, retry_upscale: bool = False) -> dict:
     image_id = os.path.splitext(os.path.basename(path))[0]
     try:
-        texts, stage = ocr.read(path, retry_upscale)
+        items, stage = ocr.read_raw(path, retry_upscale)
+        texts = ocr.group_lines(items)
+        raw = json.dumps([[t] + [round(v) for v in ocr._geom(b)] for t, b in items], ensure_ascii=False)
         found = extract_date(texts)
         y, m, d = found or _NONE
         final = f"{y}-{m}-{d}" if found else "NONE"
@@ -33,10 +35,10 @@ def predict_one(path: str, strict: bool = True, retry_upscale: bool = False) -> 
         if strict:
             raise
         print(f"[ERROR] {image_id}: {type(e).__name__}: {e}")
-        texts, stage, (y, m, d) = [], "error", _NONE
+        texts, raw, stage, (y, m, d) = [], "[]", "error", _NONE
         final = "NONE"
     return {"image_id": image_id, "year": y, "month": m, "day": d,
-            "final_date": final, "stage": stage, "texts": texts}
+            "final_date": final, "stage": stage, "texts": texts, "raw": raw}
 
 
 def predict_dir(input_dir: str, strict: bool = True, retry_upscale: bool = False,

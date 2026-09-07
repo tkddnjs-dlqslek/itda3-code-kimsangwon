@@ -14,7 +14,7 @@ import numpy as np
 
 import dateparse
 
-__all__ = ["STAGES", "read", "hybrid_rec"]
+__all__ = ["STAGES", "read", "read_raw", "hybrid_rec", "group_lines"]
 
 STAGES = ("s1", "s2", "rot90", "rot270", "rot180", "clahe", "up2x", "fail")
 
@@ -49,17 +49,40 @@ def _has_complete_date(text: str) -> bool:
     return any(None not in (c.y, c.m, c.d) for c in dateparse.find_candidates(text))
 
 
-def hybrid_rec(crops: list) -> list[str]:
-    """ko 로 전부 읽고, 숫자 3개 이상인데 날짜가 안 되는 조각만 ch 로 다시 읽는다."""
-    if not crops:
+def hybrid_rec(items: list) -> list:
+    """items = [(crop, box)]. ko 로 전부 읽고, 숫자 3개 이상인데 날짜가 안 되는 조각만
+    ch 로 다시 읽는다. 반환 [(text, box)] (conf 기준 통과분)."""
+    if not items:
         return []
+    crops = [c for c, _ in items]
     res = list(_rec("ko")(crops)[0])
     redo = [i for i, (t, _) in enumerate(res)
             if sum(c.isdigit() for c in t) >= 3 and not _has_complete_date(t)]
     if redo:
         for i, r in zip(redo, _rec("ch")([crops[i] for i in redo])[0]):
             res[i] = r
-    return [t for t, conf in res if conf >= _MIN_CONF]
+    return [(t, box) for (t, conf), (_, box) in zip(res, items) if conf >= _MIN_CONF]
+
+
+def _geom(box):
+    b = np.asarray(box, dtype=float)
+    return float(b[:, 1].mean()), float(b[:, 1].max() - b[:, 1].min()), float(b[:, 0].min())
+
+
+def group_lines(items: list) -> list[str]:
+    """[(text, box)] 를 같은 줄끼리 묶어 문자열 리스트로. 기울어진 라벨에서 '부터/까지'가
+    엉뚱한 날짜 옆에 놓이는 문제를 좌표로 푼다."""
+    rows = sorted(((t,) + _geom(b) for t, b in items), key=lambda r: r[1])
+    lines: list[list] = []          # 각 줄: [cy_sum, h_sum, n, [(cx, text)]]
+    for t, cy, h, cx in rows:
+        if lines:
+            L = lines[-1]
+            lcy, lh = L[0] / L[2], L[1] / L[2]
+            if abs(cy - lcy) <= 0.5 * max(h, lh):
+                L[0] += cy; L[1] += h; L[2] += 1; L[3].append((cx, t))
+                continue
+        lines.append([cy, h, 1, [(cx, t)]])
+    return [" ".join(t for _, t in sorted(L[3])) for L in lines]
 
 
 def _crops(img, loose: bool = False) -> list:
@@ -67,8 +90,8 @@ def _crops(img, loose: bool = False) -> list:
     boxes, _ = eng.text_det(img)
     if boxes is None or len(boxes) < 1:
         return []
-    # 읽는 순서(위->아래, 왼->오른쪽)로 맞춘다. extract_date 가 앞 조각의 키워드를 본다.
-    return list(eng.get_crop_img_list(img, eng.sorted_boxes(boxes)))
+    boxes = eng.sorted_boxes(boxes)
+    return list(zip(eng.get_crop_img_list(img, boxes), boxes))
 
 
 def _load(path: str):
@@ -82,41 +105,52 @@ def _load(path: str):
     return img
 
 
-def read(path: str, retry_upscale: bool = False) -> tuple[list[str], str]:
-    """(texts, stage) 반환. stage 는 날짜 후보를 만들어낸 단계, 못 찾으면 'fail'."""
-    img = _load(path)
-    crops = _crops(img)
-    big = [c for c in crops if c.shape[0] >= 20 and c.shape[1] / c.shape[0] <= 12]
-    small = [c for c in crops if not (c.shape[0] >= 20 and c.shape[1] / c.shape[0] <= 12)]
+def _ok(items) -> bool:
+    return dateparse.extract_date(group_lines(items)) is not None
 
-    texts = hybrid_rec(big)
-    if dateparse.extract_date(texts):
-        return texts, "s1"
-    texts = texts + hybrid_rec(small)
-    if dateparse.extract_date(texts):
-        return texts, "s2"
+
+def read_raw(path: str, retry_upscale: bool = False) -> tuple[list, str]:
+    """([(text, box)], stage) 반환. stage 는 날짜 후보를 만들어낸 단계, 못 찾으면 'fail'."""
+    img = _load(path)
+    items = _crops(img)
+    keep = lambda c: c.shape[0] >= 20 and c.shape[1] / c.shape[0] <= 12
+    big = [it for it in items if keep(it[0])]
+    small = [it for it in items if not keep(it[0])]
+
+    out = hybrid_rec(big)
+    if _ok(out):
+        return out, "s1"
+    out = out + hybrid_rec(small)
+    if _ok(out):
+        return out, "s2"
 
     for code, stage in ((cv2.ROTATE_90_CLOCKWISE, "rot90"),
                         (cv2.ROTATE_90_COUNTERCLOCKWISE, "rot270"),
                         (cv2.ROTATE_180, "rot180")):
         rot = hybrid_rec(_crops(cv2.rotate(img, code)))
-        if dateparse.extract_date(rot):
+        if _ok(rot):
             return rot, stage
-        texts += rot
+        out += rot
 
     if retry_upscale:
         # 금속면, 저대비 인쇄: 대비 강화만으로 잡히는 경우 (확대는 오히려 방해)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         eq = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
         cl = hybrid_rec(_crops(cv2.cvtColor(eq, cv2.COLOR_GRAY2BGR), loose=True))
-        if dateparse.extract_date(cl):
+        if _ok(cl):
             return cl, "clahe"
-        texts += cl
+        out += cl
         # 작은 글씨: 2배 확대
         up = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         big2x = hybrid_rec(_crops(up, loose=True))
-        if dateparse.extract_date(big2x):
+        if _ok(big2x):
             return big2x, "up2x"
-        texts += big2x
+        out += big2x
 
-    return texts, "fail"
+    return out, "fail"
+
+
+def read(path: str, retry_upscale: bool = False) -> tuple[list[str], str]:
+    """(줄 문자열 리스트, stage). 같은 줄 조각은 공백으로 이어 붙인다."""
+    items, stage = read_raw(path, retry_upscale)
+    return group_lines(items), stage
