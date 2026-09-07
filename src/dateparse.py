@@ -23,6 +23,7 @@ class Candidate:
     score: float
     why: list = field(default_factory=list)   # 점수 근거 (trace 용)
     head: str = ""                             # 같은 줄에서 날짜 앞에 있던 글자
+    minor: float = 0.0                         # 조사형(부터/까지) 점수: 늦은 날짜 규칙 다음 순위
 
 
 # --- 정규화 ------------------------------------------------------------------
@@ -61,7 +62,7 @@ MONTHS = {n: i + 1 for i, n in enumerate("jan feb mar apr may jun jul aug sep oc
 # (정규식, 그룹 해석, 만료키워드 필요 여부)
 _PATTERNS = [
     # 4자리 연도 + 공백만 (2026 10 02). '2026. 03. 1 6' 처럼 일 안에 공백 하나도 허용
-    (re.compile(r"(?<!\d)(20\d{2})[.\s]+(\d{1,2})[.\s]+(\d(?: ?\d)?)(?!\d)"), "ymd_sp", False),
+    (re.compile(r"(?<!\d)(20\d ?\d)[.\s]+(\d(?: ?\d)?)[.\s]+(\d(?: ?\d)?)(?!\d)"), "ymd_sp", False),
     # 연도 먼저 + 구분자. 뒤쪽 경계를 두지 않아 시각/LOT이 붙어도 통과 (2023.12.0610:13)
     (re.compile(r"(?<!\d)(\d{3,5})" + SEP_K + r"(\d{1,2})" + SEP_K + r"(\d{1,2})"), "ymd", False),
     # 202006/01 처럼 연월이 붙고 일만 떨어진 형태
@@ -79,7 +80,7 @@ _PATTERNS = [
     # 2026.0109 / 2026 0622 연도 뒤 월일이 붙은 형태
     (re.compile(r"(?<!\d)(20\d{2})[.\-/\s](\d{2})(\d{2})(?!\d)"), "ymd", False),
     # 25.12.10 국내 두 자리 연도 먼저 (연도로 성립할 때만 통과)
-    (re.compile(r"(?<!\d)(\d{2})" + SEP_K2 + r"(\d{1,2})" + SEP_K2 + r"(\d{1,2})(?!\d)"), "ymd", False),
+    (re.compile(r"(?<!\d)(\d{2})" + SEP_K2 + r"(\d{1,2})" + SEP_K2 + r"(\d{1,2})(?!\d)"), "ymd2k", False),
     # 10.10.21 두 자리 연도가 뒤 (위 규칙이 실패했을 때만 도달). 뒤에 :MM 이 오면 시각이라 제외
     (re.compile(r"(?<!\d)(\d{1,2})(?:" + SEP_D + r")(\d{1,2})(?:" + SEP_D + r")(\d{2})(?!\d)(?!\s*:\s*\d{2})"), "dmy", False),
     # 정확히 8자리일 때만 YYYYMMDD (13/14자리 바코드, 품목보고번호 배제)
@@ -124,10 +125,10 @@ def _complete(y, m, d):
 
 
 def _parse(kind: str, g: tuple) -> tuple | None:
-    if kind == "ymd":
+    if kind in ("ymd", "ymd2k"):
         return _complete(_year(g[0]), int(g[1]), int(g[2]))
     if kind == "ymd_sp":
-        return _complete(_year(g[0]), int(g[1]), int(g[2].replace(" ", "")))
+        return _complete(_year(g[0].replace(" ", "")), int(g[1].replace(" ", "")), int(g[2].replace(" ", "")))
     if kind == "dmy":
         if len(g[2]) == 3:
             # 26.06.227K: 국내 YY.MM.DD 뒤에 LOT 숫자가 붙은 형태를 먼저 본다 (국내 라벨이 다수)
@@ -140,6 +141,9 @@ def _parse(kind: str, g: tuple) -> tuple | None:
     if kind == "c6":
         a, b, c = g
         return _complete(_year(a), int(b), int(c)) or _complete(_year(c), int(b), int(a))
+    if kind == "c6d":   # (일/월/년) 힌트: 일월년 먼저
+        a, b, c = g
+        return _complete(_year(c), int(b), int(a)) or _complete(_year(a), int(b), int(c))
     if kind == "mon_d_y":
         return _complete(_year(g[2]), MONTHS[g[0].lower()], int(g[1]))
     if kind == "d_mon_y":
@@ -161,19 +165,19 @@ def _parse(kind: str, g: tuple) -> tuple | None:
 
 def _repair(kind: str, g: tuple) -> tuple | None:
     """완전 날짜 패턴인데 월이나 일이 무효: 유효한 칸만 남긴 부분 날짜 (2021.67.03 -> 2021-NONE-03)."""
-    if kind not in ("ymd", "ymd_sp"):
+    if kind not in ("ymd", "ymd2k", "ymd_sp"):
         return None
-    y = _year(g[0])
+    y = _year(g[0].replace(" ", ""))
     if y is None:
         return None
-    m, d = int(g[1]), int(g[2].replace(" ", ""))
+    m, d = int(g[1].replace(" ", "")), int(g[2].replace(" ", ""))
     m_ok, d_ok = 1 <= m <= 12, 1 <= d <= 31
     if m_ok == d_ok:      # 둘 다 무효거나 둘 다 유효(달력만 안 맞는 경우)면 포기
         return None
     return (y, m if m_ok else None, d if d_ok else None)
 
 
-_YEAR_GROUP = {"ymd": 0, "ymd_sp": 0, "dmy": 2, "mon_d_y": 2, "d_mon_y": 2, "mon_y": 1, "m_y": 1, "y_m": 0}
+_YEAR_GROUP = {"ymd": 0, "ymd2k": 0, "ymd_sp": 0, "dmy": 2, "mon_d_y": 2, "d_mon_y": 2, "mon_y": 1, "m_y": 1, "y_m": 0}
 
 
 def _year_token(kind: str, g: tuple) -> str:
@@ -188,11 +192,17 @@ def find_candidates(text: str) -> list[Candidate]:
     """한 조각에서 날짜 후보를 뽑는다. 앞선 패턴이 잡은 구간은 뒤 패턴이 재사용하지 않는다."""
     norm = _norm(text)
     has_expiry = EXPIRY.search(norm) is not None
+    # 수입품 힌트: 영어 만료 키워드나 (일/월/년) 표기가 있으면 국내식 YY.MM.DD 해석을 건너뛴다
+    dmy_hint = re.search(r"best before|best by|exp|bbe|use by|일\s*/?\s*월\s*/?\s*년", norm, re.I) is not None
     taken: list[tuple[int, int]] = []
     out: list[Candidate] = []
     for rx, kind, needs_kw in _PATTERNS:
         if needs_kw and not has_expiry:
             continue
+        if dmy_hint and kind == "ymd2k":
+            continue
+        if dmy_hint and kind == "c6":
+            kind = "c6d"
         for m in rx.finditer(norm):
             s, e = m.span()
             if any(s < te and ts < e for ts, te in taken):
@@ -212,12 +222,18 @@ def find_candidates(text: str) -> list[Candidate]:
             why = []
             score = 0.0
             # 접두형 키워드(소비기한:, Best before)는 줄 어디든, 조사형(까지/부터)은 날짜 뒤에 올 때만
-            if PRE_EXPIRY.search(norm) or POST_EXPIRY.search(tail):
+            minor = 0.0
+            if PRE_EXPIRY.search(norm):
                 score += 2.0; why.append("만료 키워드 +2")
-            if PRE_MFG.search(norm) or POST_MFG.search(tail) or re.search(r"lot", norm, re.I):
+            if PRE_MFG.search(norm) or re.search(r"lot", norm, re.I):
                 score -= 2.0; why.append("제조 키워드 -2")
+            # 조사형(까지/부터)은 줄 묶기가 흔들리면 옆 날짜에 붙는다. 늦은 날짜 규칙 다음 순위로만 쓴다
+            if POST_EXPIRY.search(tail):
+                minor += 1.0; why.append("뒤에 까지 (보조 +1)")
+            if POST_MFG.search(tail):
+                minor -= 1.0; why.append("뒤에 부터 (보조 -1)")
             if _TIME_AFTER.match(tail):
-                score -= 1.0; why.append("뒤에 시각 -1 (제조 시각일 가능성)")
+                minor -= 1.0; why.append("뒤에 시각 (보조 -1, 제조 시각일 가능성)")
             if y is not None and len(_year_token(kind, m.groups())) >= 3:
                 score += 0.5; why.append("4자리 연도 +0.5")
             if kind == "c6":
@@ -225,7 +241,7 @@ def find_candidates(text: str) -> list[Candidate]:
             if repaired:
                 why.append("무효 칸 제거 (부분 날짜)")
             taken.append((s, e))
-            out.append(Candidate(y, mo, d, m.group(0), score, why, head))
+            out.append(Candidate(y, mo, d, m.group(0), score, why, head, minor))
     return out
 
 
@@ -241,28 +257,35 @@ def _rank(texts: list[str]) -> list[Candidate]:
         nxt = _norm(texts[i + 1]) if i + 1 < len(texts) else ""
         own = _norm(t)
         # 접두형 키워드는 앞 조각, 조사형(부터/까지)은 뒤 조각. 단 그 조각이 키워드만 있는 짧은 조각일 때
-        ctx, cwhy = 0.0, []
+        # 이웃 조각의 키워드는 줄 묶기가 흔들리면 엉뚱한 날짜에 붙는다. 전부 보조 점수로만 쓴다
+        ctx, post, cwhy = 0.0, 0.0, []
         if not any(ch.isdigit() for ch in prev):
-            if PRE_EXPIRY.search(prev): ctx += 2.0; cwhy.append("앞 조각 만료 키워드 +2")
-            if PRE_MFG.search(prev): ctx -= 2.0; cwhy.append("앞 조각 제조 키워드 -2")
+            if PRE_EXPIRY.search(prev): post += 1.0; cwhy.append("앞 조각 만료 키워드 (보조 +1)")
+            if PRE_MFG.search(prev): post -= 1.0; cwhy.append("앞 조각 제조 키워드 (보조 -1)")
         if not any(ch.isdigit() for ch in nxt) and not (POST_EXPIRY.search(own) or POST_MFG.search(own)):
-            if POST_EXPIRY.search(nxt): ctx += 2.0; cwhy.append("뒤 조각 까지 +2")
-            if POST_MFG.search(nxt): ctx -= 2.0; cwhy.append("뒤 조각 부터 -2")
+            if POST_EXPIRY.search(nxt): post += 1.0; cwhy.append("뒤 조각 까지 (보조 +1)")
+            if POST_MFG.search(nxt): post -= 1.0; cwhy.append("뒤 조각 부터 (보조 -1)")
         for c in find_candidates(t):
             # 앞 조각 키워드는 날짜가 줄 맨 앞에 올 때만 붙인다 ("후면표기일 까지 20.08.25" 는 다른 문장)
             blocked = re.search(r"[A-Za-z가-힣]", c.head) is not None
-            c.score += 0.0 if blocked else ctx
-            c.why = c.why + ([] if blocked else cwhy)
+            if not blocked:
+                c.score += ctx; c.minor += post; c.why = c.why + cwhy
             cands.append(c)
     complete = [c for c in cands if None not in (c.y, c.m, c.d)]
     partial = [c for c in cands if c not in complete]
+    # 범위 표기 "A 부터 B 까지": 조사형 키워드 위치가 흔들려도 끝 날짜(늦은 쪽)가 소비기한
+    joined = " ".join(_norm(t) for t in texts)
+    if len(complete) >= 2 and POST_MFG.search(joined) and POST_EXPIRY.search(joined):
+        for c in complete:
+            c.score = 0.0
+            c.why = ["부터~까지 범위: 늦은 날짜"]
     # 완전한 날짜가 있으면 부분 날짜는 뺀다. 단 완전 날짜가 전부 제조 쪽(음수)이고 부분 날짜가 만료 쪽(양수)이면 부분 우선
     if complete and partial and max(c.score for c in complete) < 0 < max(c.score for c in partial):
         pool = partial
     else:
         pool = complete or partial
-    # 점수 우선, 동점이면 늦은 날짜 (소비기한은 제조일보다 뒤)
-    pool.sort(key=lambda c: (c.score, c.y or 0, c.m or 0, c.d or 0), reverse=True)
+    # 접두형 키워드 점수 > 늦은 날짜 (소비기한은 제조일보다 뒤) > 조사형 키워드
+    pool.sort(key=lambda c: (c.score, c.y or 0, c.m or 0, c.d or 0, c.minor), reverse=True)
     return pool
 
 
