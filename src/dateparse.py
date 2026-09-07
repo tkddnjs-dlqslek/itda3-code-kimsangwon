@@ -34,6 +34,12 @@ def _norm(text: str) -> str:
 # --- 키워드 ------------------------------------------------------------------
 EXPIRY = re.compile(r"소비기한|유통기한|까지|\bexp\b|best before|best by|\bbbe\b|use by", re.I)
 MFG = re.compile(r"제조|생산|부터|\bmfg\b|\bmfd\b|\bprod\b|\blot\b", re.I)
+# 조사형 키워드: 한국어는 "날짜 부터 / 날짜 까지"처럼 키워드가 날짜 뒤 조각에 온다
+POST_EXPIRY = re.compile(r"까지")
+POST_MFG = re.compile(r"부터")
+# 접두형 키워드: "소비기한: / Best before:" 뒤 조각에 날짜
+PRE_EXPIRY = re.compile(r"소비기한|유통기한|\bexp\b|best before|best by|\bbbe\b|use by", re.I)
+PRE_MFG = re.compile(r"제조|생산|\bmfg\b|\bmfd\b|\bprod\b", re.I)
 
 # --- 패턴 --------------------------------------------------------------------
 SEP_K = r"\s*[.\-/,:·년월]\s*"   # 국내 라벨 구분자 (쉼표, 콜론 OCR 오인식 포함)
@@ -163,8 +169,10 @@ def extract_date(texts: list[str]) -> tuple[str, str, str] | None:
     cands: list[Candidate] = []
     for i, t in enumerate(texts):
         prev = _norm(texts[i - 1]) if i else ""
-        # 키워드가 앞 조각에만 있고 날짜는 다음 조각에 찍히는 라벨이 흔하다
-        ctx = (2.0 if EXPIRY.search(prev) else 0.0) - (2.0 if MFG.search(prev) else 0.0)
+        nxt = _norm(texts[i + 1]) if i + 1 < len(texts) else ""
+        # 접두형 키워드는 앞 조각, 조사형(부터/까지)은 뒤 조각에서 찾는다
+        ctx = (2.0 if PRE_EXPIRY.search(prev) else 0.0) - (2.0 if PRE_MFG.search(prev) else 0.0)
+        ctx += (2.0 if POST_EXPIRY.search(nxt) else 0.0) - (2.0 if POST_MFG.search(nxt) else 0.0)
         for c in find_candidates(t):
             # 연도 없는 월-일 조각은 만료 키워드가 어딘가 있어야 날짜로 인정
             if c.y is None and not anywhere_expiry:
