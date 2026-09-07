@@ -65,14 +65,37 @@ def hybrid_rec(items: list) -> list:
 
 
 def _geom(box):
+    """(cy, h, cx). 축 정렬 근사. 기록용."""
     b = np.asarray(box, dtype=float)
     return float(b[:, 1].mean()), float(b[:, 1].max() - b[:, 1].min()), float(b[:, 0].min())
 
 
+def _tilt(boxes) -> float:
+    """라벨 전체 기울기(라디안). 가로로 긴 박스들의 윗변 각도 중앙값."""
+    angs = []
+    for b in boxes:
+        b = np.asarray(b, dtype=float)
+        w, h = np.linalg.norm(b[1] - b[0]), np.linalg.norm(b[3] - b[0])
+        if w > 1.5 * h:
+            angs.append(np.arctan2(b[1][1] - b[0][1], b[1][0] - b[0][0]))
+    return float(np.median(angs)) if angs else 0.0
+
+
 def group_lines(items: list) -> list[str]:
-    """[(text, box)] 를 같은 줄끼리 묶어 문자열 리스트로. 기울어진 라벨에서 '부터/까지'가
-    엉뚱한 날짜 옆에 놓이는 문제를 좌표로 푼다."""
-    rows = sorted(((t,) + _geom(b) for t, b in items), key=lambda r: r[1])
+    """[(text, box)] 를 같은 줄끼리 묶어 문자열 리스트로. 라벨 기울기를 보정한 좌표계에서
+    세로 위치가 같은 조각을 한 줄로 본다. '부터/까지'가 엉뚱한 날짜 옆에 놓이는 문제를 좌표로 푼다."""
+    if not items:
+        return []
+    a = _tilt([b for _, b in items])
+    ca, sa = np.cos(-a), np.sin(-a)
+    rows = []
+    for t, b in items:
+        b = np.asarray(b, dtype=float)
+        c = b.mean(axis=0)
+        cx, cy = c[0] * ca - c[1] * sa, c[0] * sa + c[1] * ca      # 기울기 보정 회전
+        h = float(np.linalg.norm(b[3] - b[0]))                       # 실제 글자 높이
+        rows.append((t, cy, h, cx))
+    rows.sort(key=lambda r: r[1])
     lines: list[list] = []          # 각 줄: [cy_sum, h_sum, n, [(cx, text)]]
     for t, cy, h, cx in rows:
         if lines:
