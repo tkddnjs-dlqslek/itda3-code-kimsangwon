@@ -6,5 +6,6 @@ cd "$(dirname "$0")"
 mkdir -p weights
 dl() { [ -s "weights/$1" ] && echo "skip $1" || curl -L --fail -o "weights/$1" "$2"; }
 dl ch_PP-OCRv3_rec_infer.onnx "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv3/ch_PP-OCRv3_rec_infer.onnx"
+dl ch_PP-OCRv5_det_mobile.onnx "https://modelscope.cn/api/v1/models/RapidAI/RapidOCR/repo?Revision=master&FilePath=onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
 dl korean_PP-OCRv5_rec_mobile.onnx "https://modelscope.cn/api/v1/models/RapidAI/RapidOCR/repo?Revision=master&FilePath=onnx/PP-OCRv5/rec/korean_PP-OCRv5_rec_mobile.onnx"
 ls -la weights

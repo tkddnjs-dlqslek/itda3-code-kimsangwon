@@ -16,7 +16,7 @@ import dateparse
 
 __all__ = ["STAGES", "read", "read_raw", "hybrid_rec", "group_lines"]
 
-STAGES = ("s1", "s2", "rot90", "rot270", "rot180", "clahe", "up2x", "fail")
+STAGES = ("s1", "s2", "det5", "rot90", "rot270", "rot180", "clahe", "up2x", "fail")
 
 # 채점 서버는 repo 루트에서 노트북을 돌린다. cwd 가 아니라 이 파일 기준으로 찾는다.
 _WEIGHTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "weights")
@@ -34,8 +34,19 @@ def _engine(key: str, **kwargs):
     return _ENGINES[key]
 
 
-def _det(loose: bool = False):
-    return _engine("det_loose", det_box_thresh=0.3) if loose else _engine("det")
+DET_FILE: str | None = None   # None = rapidocr 동봉 det. 벤치에서 교체 가능
+
+
+_DET5_FILE = "ch_PP-OCRv5_det_mobile.onnx"   # 재시도용 v5 det: 도트 프린팅 검출이 v4보다 좋음 (09-08 벤치)
+
+
+def _det(loose: bool = False, v5: bool = False):
+    if v5:
+        return _engine("det5", det_model_path=os.path.join(_WEIGHTS, _DET5_FILE))
+    kw = {"det_model_path": os.path.join(_WEIGHTS, DET_FILE)} if DET_FILE else {}
+    if loose:
+        return _engine("det_loose", det_box_thresh=0.3, **kw)
+    return _engine("det", **kw)
 
 
 def _rec(name: str):
@@ -108,8 +119,8 @@ def group_lines(items: list) -> list[str]:
     return [" ".join(t for _, t in sorted(L[3])) for L in lines]
 
 
-def _crops(img, loose: bool = False) -> list:
-    eng = _det(loose)
+def _crops(img, loose: bool = False, v5: bool = False) -> list:
+    eng = _det(loose, v5)
     boxes, _ = eng.text_det(img)
     if boxes is None or len(boxes) < 1:
         return []
@@ -146,6 +157,12 @@ def read_raw(path: str, retry_upscale: bool = False) -> tuple[list, str]:
     out = out + hybrid_rec(small)
     if _ok(out):
         return out, "s2"
+
+    # v5 det 로 다시 검출: v4 가 놓치는 도트 프린팅, 저대비 글자
+    d5 = hybrid_rec(_crops(img, v5=True))
+    if _ok(d5):
+        return d5, "det5"
+    out += d5
 
     for code, stage in ((cv2.ROTATE_90_CLOCKWISE, "rot90"),
                         (cv2.ROTATE_90_COUNTERCLOCKWISE, "rot270"),
