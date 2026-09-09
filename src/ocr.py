@@ -67,11 +67,13 @@ def hybrid_rec(items: list) -> list:
         return []
     crops = [c for c, _ in items]
     res = list(_rec("ko")(crops)[0])
-    redo = [i for i, (t, _) in enumerate(res)
-            if sum(c.isdigit() for c in t) >= 3 and not _has_complete_date(t)]
+    # 숫자 조각은 ch 로도 읽는다. ko 는 한글에 강하지만 숫자 한 자리를 자신 있게 틀리는 일이 잦다
+    # (골드 1,000장: ko 우선 738 vs ch 우선 749, 09-09 bench_policy). ch 가 완전 날짜를 내면 ch 채택.
+    redo = [i for i, (t, _) in enumerate(res) if sum(c.isdigit() for c in t) >= 3]
     if redo:
-        for i, r in zip(redo, _rec("ch")([crops[i] for i in redo])[0]):
-            res[i] = r
+        for i, (t, conf) in zip(redo, _rec("ch")([crops[i] for i in redo])[0]):
+            if _has_complete_date(t) or not _has_complete_date(res[i][0]):
+                res[i] = (t, conf)
     return [(t, box) for (t, conf), (_, box) in zip(res, items) if conf >= _MIN_CONF]
 
 
