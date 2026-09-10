@@ -16,7 +16,7 @@ import dateparse
 
 __all__ = ["STAGES", "read", "read_raw", "hybrid_rec", "group_lines"]
 
-STAGES = ("s1", "s2", "det5", "rot90", "rot270", "rot180", "clahe", "up2x", "fail")
+STAGES = ("s1", "s2", "det5", "rot90", "rot270", "rot180", "clahe", "hires", "up2x", "fail")
 
 # 채점 서버는 repo 루트에서 노트북을 돌린다. cwd 가 아니라 이 파일 기준으로 찾는다.
 _WEIGHTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "weights")
@@ -131,15 +131,21 @@ def _crops(img, loose: bool = False, v5: bool = False) -> list:
     return list(zip(eng.get_crop_img_list(img, boxes), boxes))
 
 
-def _load(path: str):
+def _load(path: str, side: int = _MAX_SIDE):
+    """긴 변이 side 가 되도록 축소 (작은 이미지는 그대로). 잘라내지 않는다."""
     # cv2.imread 는 윈도우 비ASCII 경로에서 None 을 준다. imdecode 로 우회.
     img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError(path)
-    scale = _MAX_SIDE / max(img.shape[:2])
+    scale = side / max(img.shape[:2])
     if scale < 1:
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     return img
+
+
+def _clahe(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return cv2.cvtColor(cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray), cv2.COLOR_GRAY2BGR)
 
 
 def _ok(items) -> bool:
@@ -177,12 +183,15 @@ def read_raw(path: str, retry_upscale: bool = False) -> tuple[list, str]:
 
     if retry_upscale:
         # 금속면, 저대비 인쇄: 대비 강화만으로 잡히는 경우 (확대는 오히려 방해)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        eq = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
-        cl = hybrid_rec(_crops(cv2.cvtColor(eq, cv2.COLOR_GRAY2BGR), loose=True))
+        cl = hybrid_rec(_crops(_clahe(img), loose=True))
         if _ok(cl):
             return cl, "clahe"
         out += cl
+        # 원본 해상도(긴 변 1920) + 대비 강화: 골드 fail 103장 중 4장 회복 (09-11 bench_hires)
+        hi = hybrid_rec(_crops(_clahe(_load(path, 1920)), loose=True))
+        if _ok(hi):
+            return hi, "hires"
+        out += hi
         # 작은 글씨: 2배 확대
         up = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         big2x = hybrid_rec(_crops(up, loose=True))
