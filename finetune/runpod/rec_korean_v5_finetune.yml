@@ -1,0 +1,44 @@
+# korean_PP-OCRv5_mobile_rec 파인튜닝 오버라이드.
+#
+# ponytail: Backbone(PPLCNetV3)/Head(MultiHead: CTCHead+NRTRHead) 같은 아키텍처 블록은
+# 여기서 다시 쓰지 않는다. 손으로 옮기다 in_channels/scale 하나만 틀려도 사전학습 가중치
+# shape 가 안 맞아 로딩이 깨지는데, 그 값들은 이미 PaddleOCR 저장소의
+# configs/rec/PP-OCRv5/PP-OCRv5_mobile_rec.yml 에 정확히 있다. 그 파일을 base 로 두고
+# train_rec.sh 가 이 파일을 펼쳐서 `tools/train.py -c <base> -o <이 파일의 key=value...>` 로
+# 넘긴다 (PaddleOCR 공식 -o 커맨드라인 오버라이드 기능, PaddleOCR 3.x 기준 정상 동작).
+# 즉 이 파일은 "base 대비 바뀌는 값만" 담는다.
+
+Global:
+  # 사전학습 가중치: setup.sh 가 받아둔 한국어 v5 rec pretrained (파인튜닝 시작점)
+  pretrained_model: /workspace/pretrained/korean_PP-OCRv5_mobile_rec_pretrained
+  # 문자 딕셔너리: PP-OCRv5 계열은 언어 공용 딕셔너리 하나를 씀 (base config 기본값과 동일,
+  # CLAUDE.md 의 "ppocrv5_korean_dict.txt" 는 실재하지 않는 파일명 — 실제로는 이 경로. 09-11 웹 확인)
+  character_dict_path: ./ppocr/utils/dict/ppocrv5_dict.txt
+  save_model_dir: ./output/rec_korean_v5_ft
+  epoch_num: 30          # base 75 -> 30. 파인튜닝이라 원 학습보다 짧게
+  save_epoch_step: 5
+  eval_batch_step: [0, 200]   # 데이터가 작아 200 스텝마다 평가 (base 는 2000)
+
+Optimizer:
+  lr:
+    # base PP-OCRv5_mobile_rec.yml 의 기본값도 이미 0.0005 (09-11 웹 확인, CLAUDE.md 는
+    # "기본의 1/10" 이라 적었지만 실측은 base=finetune 값이 같음). 그래도 학습률을 낮게
+    # 고정해 둔다는 의도로 명시적으로 남겨 둠 — 실제로 더 낮추고 싶으면 0.0001 로 내릴 것
+    learning_rate: 0.0005
+
+Train:
+  dataset:
+    data_dir: /workspace/data
+    label_file_list: [/workspace/data/rec/train_label.txt]
+  loader:
+    batch_size_per_card: 128
+    num_workers: 4
+
+Eval:
+  dataset:
+    data_dir: /workspace/data
+    label_file_list: [/workspace/data/rec/val_label.txt]
+  loader:
+    batch_size_per_card: 128
+
+# 증강(RecAug 등)은 base config 에 이미 들어있어 그대로 상속됨. 여기서 건드릴 필요 없음.

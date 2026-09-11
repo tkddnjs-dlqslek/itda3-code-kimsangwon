@@ -27,3 +27,9 @@ Thumbs.db
 
 # ===== 검수 시트 =====
 labels/sheets*/
+
+# ===== 파인튜닝 데이터/산출물 =====
+finetune/data/
+finetune/output/
+finetune/*.log
+*.pdparams

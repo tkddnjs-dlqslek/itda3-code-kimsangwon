@@ -1,0 +1,32 @@
+# ch_PP-OCRv5_mobile_det 파인튜닝 오버라이드 (2단계: det, box 라벨 필요).
+# rec 쪽과 같은 이유로 base(configs/det/PP-OCRv5/PP-OCRv5_mobile_det.yml)의 Backbone/Head/
+# transform 블록은 다시 옮기지 않고 train_det.sh 가 -o 로 이 값만 얹는다.
+
+Global:
+  pretrained_model: /workspace/pretrained/PP-OCRv5_mobile_det_pretrained
+  save_model_dir: ./output/det_v5_ft
+  epoch_num: 100        # base 500 -> 100. box 라벨이 적을 것이므로 원 학습보다 짧게
+  save_epoch_step: 10
+  eval_batch_step: [0, 200]
+
+Optimizer:
+  lr:
+    learning_rate: 0.0005   # base 0.001 -> 절반. 파인튜닝이라 더 보수적으로
+
+Train:
+  dataset:
+    data_dir: /workspace/data/det
+    label_file_list: [/workspace/data/det/train_label.txt]
+  loader:
+    batch_size_per_card: 8   # det 은 이미지 그대로 넣어 rec 보다 배치를 작게 (base 와 동일)
+    num_workers: 4
+
+Eval:
+  dataset:
+    data_dir: /workspace/data/det
+    label_file_list: [/workspace/data/det/val_label.txt]
+
+# 라벨 형식(PaddleOCR det 표준, DetLabelEncode 가 읽음):
+#   <이미지경로>\t[{"transcription": "무시됨", "points": [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]}, ...]
+# transcription 은 det 학습에선 실제로 안 쓰이지만 빈 문자열이면 "###"로 무시 처리되니
+# 아무 텍스트나(또는 "date") 채워 둘 것. points 는 시계방향 4점.
