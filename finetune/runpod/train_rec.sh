@@ -10,6 +10,16 @@ cd /workspace/PaddleOCR
 OVERRIDES=$(python3 - <<'PY'
 import yaml
 
+def fmt(v):
+    # float 를 그대로 str() 하면 2e-05 처럼 지수표기가 나오는데, PaddleOCR 의 -o 파서는
+    # yaml.load(v) 로 값을 읽어서 "2e-05"(점 없는 지수표기)를 float 이 아니라 문자열로
+    # 오인식한다 (PyYAML 은 소수점이 있어야 지수표기를 float 로 인정). 09-12: lr 2e-05 오버라이드
+    # 때문에 발견 -> 고정소수점으로 강제 변환해 회피.
+    if isinstance(v, float):
+        s = f"{v:.10f}".rstrip("0").rstrip(".")
+        return s if s else "0"
+    return str(v)
+
 def flat(d, prefix=""):
     out = []
     for k, v in d.items():
@@ -17,9 +27,9 @@ def flat(d, prefix=""):
         if isinstance(v, dict):
             out += flat(v, key + ".")
         elif isinstance(v, list):
-            out.append(f"{key}=[{','.join(str(x) for x in v)}]")
+            out.append(f"{key}=[{','.join(fmt(x) for x in v)}]")
         else:
-            out.append(f"{key}={v}")
+            out.append(f"{key}={fmt(v)}")
     return out
 
 cfg = yaml.safe_load(open("../runpod/rec_korean_v5_finetune.yml", encoding="utf-8"))
@@ -30,7 +40,7 @@ echo "오버라이드: $OVERRIDES"
 
 mkdir -p ../logs
 nohup python3 tools/train.py \
-    -c configs/rec/PP-OCRv5/PP-OCRv5_mobile_rec.yml \
+    -c configs/rec/PP-OCRv5/multi_language/korean_PP-OCRv5_mobile_rec.yml \
     -o $OVERRIDES \
     > ../logs/train_rec.log 2>&1 &
 echo "학습 시작 (PID $!). 진행: tail -f /workspace/logs/train_rec.log"

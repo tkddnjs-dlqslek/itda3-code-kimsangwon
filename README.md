@@ -1,118 +1,99 @@
-# ITDA 3rd 학술제 - 소비기한 추출 제출 템플릿 📌
+# ITDA 3rd 학술제: 소비기한 OCR 제출
 
-본 저장소는 **제3회 ITDA 연합학술제** 참가자를 위한 공식 제출 템플릿 및 환경 검증용 저장소입니다.
+상품 뒷면 이미지에서 소비기한(유통기한) 날짜를 뽑아 `image_id,year,month,day,final_date` 스키마의
+`submission.csv` 로 저장하는 오프라인 파이프라인입니다.
 
----
+## 1. 설치
 
-## 1. 대회 개요 및 과제 정의
-
-- **주제**: OCR 기반 상품 소비기한 정보 추출 아키텍처 설계 및 도메인 활용 기획
-- **주최**: 수도권 데이터사이언스 연합학회 ITDA (경희대 CODE, 서강대 INSIGHT, 성균관대 DScover, 인하대 IBAS, 한국외대 DAT)
-- **입력 (Input)**: 상품 뒷면 이미지 (`ITDA_INPUT_DIR` 환경변수로 경로 주입)
-- **출력 (Output)**: `submission.csv` (`ITDA_OUTPUT_PATH` 환경변수 경로에 저장)
-
-### submission.csv 표준 스키마
-
-| image_id | year | month | day | final_date |
-| --- | --- | --- | --- | --- |
-| 1 | 2026 | 05 | 29 | 2026-05-29 |
-| 2 | NONE | NONE | NONE | NONE |
-
-- `image_id` : 확장자를 제외한 이미지 파일명 (예: 1)
-- `year` : 4자리 연도 문자열 (예: 2026, 미인식 시 NONE)
-- `month` : 2자리 월 문자열 (예: 05, 미인식 시 NONE)
-- `day` : 2자리 일 문자열 (예: 29, 미인식 시 NONE)
-- `final_date` : 하이픈(-)으로 연결된 정규화 날짜 (예: 2026-05-29, 미인식 시 NONE)
-
----
-
-## 2. 파일 및 저장소 구조
-
-````
-itda3-[학회영문]-[영문팀명]/
-├── predict.ipynb            # 메인 추론 노트북 (운영진 채점용 필수)
-├── requirements.txt         # 실행 환경 패키지 목록 (필수)
-├── README.md                # 가중치 다운로드 및 실행 가이드 (필수)
-├── .gitignore               # 가중치·데이터 커밋 방지 (수정 시 주의)
-├── download_weights.sh      # [선택] 외부 가중치 다운로드 스크립트
-├── notebooks/               # [선택] 실험·분석 노트북 (채점 대상 아님)
-└── weights/                 # [선택] 모델 가중치 저장 폴더
-````
-
----
-
-## 3. 시작하기 및 실행 방법
-
-### 1) 가상환경 구축 및 패키지 설치
-
-````
-git clone <본인 팀 저장소 URL>
-cd <저장소 디렉토리>
+```bash
 pip install -r requirements.txt
-````
+```
 
-### 2) 가중치 파일 설정
+CPU 전용(GPU, torch 없음), 인터넷 차단 환경(4 vCPU)에서 그대로 동작하도록 맞춰져 있습니다.
 
-용량이 큰 모델 가중치 파일(`.pt`, `.pth`, `.safetensors` 등)은 Git에 직접 푸시하지 마시고, Google Drive, HuggingFace 링크 또는 Release Assets를 통해 `download_weights.sh` 스크립트 등으로 내려받도록 설정하세요.
+## 2. 가중치 다운로드 (채점 전 1회)
 
-### 3) 채점 재현성 검증 (운영진 채점 표준 명령어)
+```bash
+bash download_weights.sh
+```
 
-운영진은 Standard 4-Core vCPU 환경에서 아래 명령어를 실행하여 순차 실행(Run All) 및 채점을 진행합니다.
+`weights/` 에 아래 3개 rec/det ONNX 가중치를 받아옵니다. det 기본 모델은 `rapidocr-onnxruntime`
+패키지에 동봉되어 있어 별도 다운로드가 필요 없습니다.
 
-````
+- `ch_PP-OCRv5_det_mobile.onnx` (재시도용 v5 검출기, 도트 프린팅에 강함)
+- `korean_PP-OCRv5_rec_mobile.onnx` (기본 인식기)
+- `ch_PP-OCRv3_rec_infer.onnx` (숫자 재확인용 인식기)
+
+가중치는 Git에 커밋하지 않습니다(`.gitignore`). 노트북 실행 도중에는 다운로드를 시도하지 않고,
+`download_weights.sh` 로 미리 받아둔 로컬 파일만 `download_enabled=False` 상당으로 오프라인 로드합니다.
+
+## 3. 노트북 실행
+
+```bash
 export ITDA_INPUT_DIR=./val_images
 export ITDA_OUTPUT_PATH=./submission.csv
-
 jupyter nbconvert --to notebook --execute predict.ipynb \
     --ExecutePreprocessor.timeout=2400 \
     --output /tmp/executed.ipynb
-````
+```
 
----
+레포 루트에서 실행하는 것을 전제로 합니다(`predict.ipynb` 가 `src/` 를 `sys.path` 에 추가).
+`input()` 등 대화형 코드, 로컬 절대경로 하드코딩은 없습니다.
 
-## 4. ⚠️ 채점 환경 필수 공지 (반드시 읽어주세요)
+## 4. 아키텍처 요약
 
-### 1) 팀 저장소 공개 범위
+- **검출(det)**: `rapidocr-onnxruntime` 번들 det로 우선 검출하고, 실패 시 도트 프린팅에
+  강한 `ch_PP-OCRv5_det_mobile.onnx` 로 재검출합니다 (`src/ocr.py::_det`).
+- **단계 재시도**: 싼 단계부터 순서대로 시도하고 날짜 후보가 잡히는 즉시 멈춥니다
+  (`s1` 큰 글자 박스 → `s2` 작은 박스 포함 → `det5` v5 재검출 → 90/180/270도 회전 →
+  CLAHE 대비 강화 → 원본 고해상도 → 2배 확대 → 5x5/3x3 침식(도트 프린팅용, 필요하면 seam-carving으로
+  두 줄 분리)). `src/ocr.py::read_raw`.
+- **인식(rec) 하이브리드**: 한국어 v5 인식기로 전부 읽고, 숫자 3자리 이상인데 날짜가 안 풀리는
+  조각만 중국어 v3 인식기로 다시 읽어 완전한 날짜가 나오면 교체합니다 (`src/ocr.py::hybrid_rec`).
+- **규칙 엔진**: 순수 파이썬으로 키워드 오탈자 사전 교정, 정규식 패턴 매칭, 달력 검증, 점수화를
+  거쳐 소비기한 하나를 고릅니다. 소비기한/유통기한 동시 표기, 부터~까지 범위, 포장일자 제외,
+  부분 날짜(NONE 혼합) 판정을 포함합니다 (`src/dateparse.py`).
+- **시간 예산**: `pipeline.set_budget(total_seconds, n_images)` 로 전체 예산을 걸어두면,
+  이미지마다 남은 시간/남은 장 수를 계산해 여유가 없어지면 회전·재시도 단계를 건너뛰고(`cheap`),
+  더 빠듯하면 가장 싼 `s1` 단계만 씁니다. 예산을 걸지 않으면 기존 동작 그대로입니다
+  (`src/pipeline.py::set_budget`, `_decide_stage`). `predict.ipynb` 는 2400초 제한에
+  120초 여유를 둔 2280초로 설정합니다.
 
-- 팀 저장소는 **Public** 으로 생성해 주세요.
-- Private 으로 운영할 경우, 마감 전까지 운영진 계정 **`b9511242000-blip`** 을 Collaborator 로 초대해야 합니다. (Settings → Collaborators → Add people)
-- 마감 시각 기준 운영진이 접근할 수 없는 저장소는 채점 대상에서 제외됩니다.
+## 5. 오프라인 제약
 
-### 2) 채점 서버는 오프라인입니다
+채점 서버는 인터넷이 완전히 차단됩니다. 모든 가중치는 `download_weights.sh` 로 노트북 실행
+전에 로컬에 존재해야 하며, `predict.ipynb` 안에서는 어떤 다운로드도 하지 않습니다.
 
-채점은 **인터넷이 차단된 Standard 4-Core vCPU 환경**에서 진행됩니다.
+## 6. 라벨과 평가 스크립트
 
-- EasyOCR, PaddleOCR 등 상당수 라이브러리는 최초 실행 시 가중치를 인터넷에서 **자동 다운로드** 합니다. 오프라인 환경에서는 이 단계가 실패해 실행 오류(정량 0점)가 발생합니다.
-- 모든 가중치는 **노트북 실행 전에 로컬에 존재**해야 합니다.
-  - `download_weights.sh` 는 채점 실행 **전에** 운영진이 1회 실행합니다.
-  - `predict.ipynb` 의 Run All **도중에** 다운로드하는 코드는 동작하지 않습니다.
+- 정답 라벨: `labels/gold.csv`, 라벨링 기준: `labels/LABELING_RULES.md`
+- 평가: `python tools/evaluate.py labels/gold.csv <예측 csv>` (정확도, 오류 유형별 집계,
+  `labels/errors.csv` 출력)
+- 그 외 벤치마크/실험 스크립트는 `tools/`, 파인튜닝 관련 자료는 `finetune/` 에 있습니다
+  (둘 다 채점 대상 아님).
 
-EasyOCR 사용 예시:
+## 6-1. 직접 라벨링한 데이터 (가산점 증빙)
 
-````python
-reader = easyocr.Reader(
-    ['en'], gpu=False,
-    model_storage_directory='./weights',
-    download_enabled=False,   # 오프라인 강제
-)
-````
+- 위치: `custom_data/`. 라벨은 `custom_data/labels/` 의 CSV 와 XLSX, 라벨과 짝지어진 글자 조각 이미지는
+  `custom_data/crops/` 에 있습니다.
+- 핵심 파일은 `custom_data/labels/gold_1000.csv` (골드셋 1,000장 정답)와
+  `custom_data/labels/v3_crop_labels_298.csv` (글자 조각 298개 정답)이며, 구축 기준은 요약서 PDF 2쪽에
+  적었습니다.
 
-네트워크를 끄고 Run All 이 끝까지 돌아가면 통과입니다. 제출 전 반드시 한 번 검증해 보세요.
+## 7. 테스트
 
-### 3) 환경 설치 시간은 속도 점수에 포함되지 않습니다
+```bash
+python -m pytest tests -q
+```
 
-- `pip install -r requirements.txt` 및 `download_weights.sh` 소요 시간은 속도 점수(10점) 산정에서 **제외** 됩니다.
-- 속도 점수는 `predict.ipynb` 의 Run All 실행 시간(최대 2400초)만으로 산정합니다.
+## 로컬에서 노트북 실행할 때 주의
 
----
+`predict.ipynb` 의 커널스펙은 채점 환경 기본값인 `python3` 로 둔다. 로컬에 다른 `python3` 커널이 있으면
+`ModuleNotFoundError: No module named 'cv2'` 가 날 수 있으므로, 이 저장소 환경을 커널로 등록해 지정 실행한다.
 
-## 5. 제출 전 필수 체크리스트
+```bash
+python -m ipykernel install --user --name itda --display-name "Python (itda)"
+ITDA_INPUT_DIR=./val_images ITDA_OUTPUT_PATH=./submission.csv   python -m jupyter nbconvert --to notebook --execute predict.ipynb   --ExecutePreprocessor.timeout=2400 --ExecutePreprocessor.kernel_name=itda --output /tmp/executed.ipynb
+```
 
-1. **CONFIG 셀 수정 금지**: `predict.ipynb` 최상단의 환경변수 주입 코드는 절대 변경하거나 값을 직접 하드코딩 대입하지 마세요.
-2. **대화형 코드 제거**: 실행 중 사용자 입력을 대기하는 코드(`input()`, `getpass()` 등)가 있으면 실행이 중단되어 정량 0점 처리됩니다.
-3. **인덱스 제외 저장**: CSV 저장 시 반드시 인덱스를 제외해야 합니다. (`df.to_csv(OUTPUT_PATH, index=False)`)
-4. **결과 스키마 준수**: 누락된 컬럼이 없도록 `image_id, year, month, day, final_date` 5개 컬럼 스키마를 엄격히 지켜주세요.
-5. **오프라인 실행 검증**: 네트워크 차단 상태에서 Run All 이 완주하는지 확인하세요.
-6. **저장소 접근 권한**: Public 설정 또는 운영진 계정 Collaborator 초대를 완료하세요.
-````
-````
+채점 서버는 requirements.txt 를 설치한 환경의 기본 커널로 돌리므로 kernel_name 을 지정하지 않는다.

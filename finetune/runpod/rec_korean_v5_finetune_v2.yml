@@ -1,0 +1,61 @@
+# v2: 날짜 조각 + 일반 글자 조각(망각 방지 앵커) 1대1 혼합 데이터로 재학습 (09-13)
+# v1 은 날짜만 학습해 한글 키워드를 잊었다 (까지 -> 까2, 유통기한 -> 유동기한). 그 대책.
+# korean_PP-OCRv5_mobile_rec 파인튜닝 오버라이드.
+#
+# ponytail: Backbone(PPLCNetV3)/Head(MultiHead: CTCHead+NRTRHead) 같은 아키텍처 블록은
+# 여기서 다시 쓰지 않는다. 손으로 옮기다 in_channels/scale 하나만 틀려도 사전학습 가중치
+# shape 가 안 맞아 로딩이 깨지는데, 그 값들은 이미 PaddleOCR 저장소의
+# configs/rec/PP-OCRv5/multi_language/korean_PP-OCRv5_mobile_rec.yml 에 정확히 있다. 그 파일을 base 로 두고
+# train_rec.sh 가 이 파일을 펼쳐서 `tools/train.py -c <base> -o <이 파일의 key=value...>` 로
+# 넘긴다 (PaddleOCR 공식 -o 커맨드라인 오버라이드 기능, PaddleOCR 3.x 기준 정상 동작).
+# 즉 이 파일은 "base 대비 바뀌는 값만" 담는다.
+
+Global:
+  # 사전학습 가중치: setup.sh 가 받아둔 한국어 v5 rec pretrained (파인튜닝 시작점)
+  pretrained_model: /workspace/pretrained/korean_PP-OCRv5_mobile_rec_pretrained
+  # 문자 딕셔너리: 한국어 v5 전용 사전 (11,945자). 로컬 korean_PP-OCRv5_rec_mobile.onnx 메타데이터와
+  # 순서까지 동일함을 09-11 확인. 중국어용 ppocrv5_dict.txt 를 쓰면 사전학습 가중치 출력 크기가 안 맞음
+  character_dict_path: ./ppocr/utils/dict/ppocrv5_korean_dict.txt
+  use_space_char: true
+  save_model_dir: ./output/rec_korean_v5_ft_v2
+  # 09-12: finetune_data(6,748 train줄) 기준. batch 128 -> 1 epoch = ceil(6748/128) = 53 iter.
+  # 파인튜닝 가이드 권장 "수천 iteration" 을 채우려면 epoch_num 60 -> 60*53 = 3,180 iter.
+  # (base 75 epoch 대비 짧지만, 파인튜닝이라 원 학습보다 짧아도 됨. 기존 30 은 iter 수가
+  # 너무 적어(30*53=1,590) 60 으로 올림)
+  epoch_num: 60
+  save_epoch_step: 10   # 60 epoch 전부 5 epoch 마다 저장하면 체크포인트 12개, 10으로 줄여 디스크 절약
+  # eval_batch_step: 150 iter 마다 평가 (~2.8 epoch, base 는 2000). best_accuracy 체크포인트는
+  # PaddleOCR tools/train.py 가 eval 때마다 자동 비교해 저장 (여기서 별도 설정 불필요,
+  # export_rec.sh 기본값도 output/rec_korean_v5_ft_v2/best_accuracy 를 그대로 씀)
+  eval_batch_step: [0, 150]
+
+Optimizer:
+  lr:
+    # 09-12: base 의 Cosine(0 으로 수렴)은 "1e-4 -> 2e-5" 처럼 하한을 못 준다. 그래서 스케줄러를
+    # Piecewise 로 바꿔 1e-4 로 시작, epoch 40(iter ~2,120) 이후 2e-5 로 낮춰 남은 20 epoch 을
+    # 저학습률로 마무리(파인튜닝 가이드 권장 범위). warmup_epoch 3 (~159 iter, 가이드 권장 100~200)
+    name: Piecewise
+    decay_epochs: [40]
+    values: [0.0001, 0.00002]
+    warmup_epoch: 3
+
+Train:
+  dataset:
+    # 09-12: RunPod pod 에 finetune_data/ 를 통째로 업로드하는 경로 (upload_data.md 참고).
+    # train_label.txt/val_label.txt 안 경로는 finetune_data/ 기준 상대경로(base/imgs/..., aug/imgs/...)
+    data_dir: /workspace/finetune_data_v2
+    label_file_list: [/workspace/finetune_data_v2/train_label.txt]
+  loader:
+    batch_size_per_card: 128   # 파인튜닝 가이드 권장값 그대로
+    num_workers: 4
+
+Eval:
+  dataset:
+    data_dir: /workspace/finetune_data_v2
+    label_file_list: [/workspace/finetune_data_v2/val_label.txt]
+  loader:
+    batch_size_per_card: 128
+
+# 증강(RecAug 등)은 base config 에 이미 들어있어 그대로 상속됨. 여기서 건드릴 필요 없음.
+# (finetune_data 자체도 aug/ 에 이미 augmentation 을 3배 구워 둔 상태라 이중 증강이지만,
+#  RecAug 는 매 epoch 랜덤이라 문제 없음 — 오히려 다양성이 늘어남)

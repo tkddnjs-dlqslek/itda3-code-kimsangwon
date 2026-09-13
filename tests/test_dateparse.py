@@ -2,7 +2,7 @@
 """소비기한 추출 규칙 엔진 테스트. 입력은 OCR 텍스트 조각 리스트, 출력은 (year, month, day)."""
 import pytest
 
-from dateparse import extract_date, find_candidates
+from dateparse import extract_date, explain, find_candidates
 
 CASES = [
     # --- 완전한 날짜, 국내 표기 ---
@@ -132,6 +132,53 @@ CASES = [
     (["30/07/26B19 BEST BEFORE"], ("2026", "07", "30")),
     # (일/월/년) 표기 힌트가 있으면 6자리도 일월년 우선
     (["표시일까지(일/월/년) 221126"], ("2026", "11", "22")),
+    # --- 09-12 회귀: 부터~까지 범위에서 바코드가 6자리 압축으로 오인되는 경우 ---
+    # 000080: 바코드 조각(020431)이 6자리 압축 날짜로 잡혀도 감점(-1) 유지, 진짜 범위 날짜가 이김
+    (["3,990", "8 1802259/020431", "25.09.17 부터", "26.09.16 까지"], ("2026", "09", "16")),
+    # 4자리 연도 보너스를 범위 리셋 후에도 남기면 이전 연도가 이기던 회귀
+    (["2025.06.17 부터", "26.06.16 까지"], ("2026", "06", "16")),
+    # 범위 양쪽이 전부 6자리 압축이어도 감점이 동률이면 늦은 날짜가 이김
+    (["250617 부터", "260616 까지"], ("2026", "06", "16")),
+    # --- 09-12 Rule 4: 월+년만 (일 없음) ---
+    (["L30408J 04-2023"], ("2023", "04", "NONE")),
+    # 정크 홑자리 '1'이 뒤 월.년과 엮여 완전 날짜(2023-05-01)로 잘못 붙는 것 방지
+    (["1 05.2023 9EEI UP"], ("2023", "05", "NONE")),
+    (["05.2023 D9481"], ("2023", "05", "NONE")),
+    (["JUN 2022"], ("2022", "06", "NONE")),
+    # 진짜 일-월-년 완전 날짜는 계속 우선 (12/2023 가 31/12/2023 를 가로채면 안 됨)
+    (["PESO LIQUIDO", "31/12/2023", "201474", "BBE:"], ("2023", "12", "31")),
+    # 시각(HH:MM)은 월+년 날짜가 되면 안 됨
+    (["배송 15:30 2021"], None),
+    (["소비기한 2026.05.17 까지"], ("2026", "05", "17")),
+    # --- 09-12 Rule 3: 월 이름 + 붙거나 슬래시로 이어진 일/년 ---
+    (["Best By FEB/21/21"], ("2021", "02", "21")),
+    (["DEC012021"], ("2021", "12", "01")),
+    (["DEC-01-2021"], ("2021", "12", "01")),
+    # --- 09-13 회귀: 월-일 뒤에 시각/잡음이 구분자 없이 곧장 붙어 거부되던 경우 ---
+    # 000572: 월.일 바로 뒤에 시각이 구분자 없이 붙음 (10.1513:56)
+    (["10.15 10.1513:56 10.1513:56"], ("NONE", "10", "15")),
+    # 000761: 줄 맨 앞 월.일, 뒤에 반복 인쇄된 잡음
+    (["11.11 11.110PF1 11.110rF1"], ("NONE", "11", "11")),
+    # 000760: 줄 맨 앞 월.일, 뒤에 LOT 스타일 잡음 (공백 있음)
+    (["11.20 R13 53 1.D RS"], ("NONE", "11", "20")),
+    # 000828: 줄 맨 앞 월.일, 일 뒤에 숫자가 곧장 더 붙음
+    (["12.2195AF2 12NSAF2 PS PS F"], ("NONE", "12", "21")),
+    # 000994: 같은 줄 어디든 까지가 있으면 통과 (일=월 3자리연도 오독 방지도 함께 확인)
+    (["02 02.180 .18까지"], ("NONE", "02", "18")),
+    (["영c 02 13 1 무름:18 9:1까지는 13:10.F1E 02.197 .19까지 :10.F1E :10F1E 19까지 10.F1E 온까지"],
+     ("NONE", "02", "19")),
+    # 000573: 같은 줄엔 근거 없어도 바로 위 줄에 만료 키워드가 있으면 통과
+    (["소비기한", "떠먹는 요거트 10.22"], ("NONE", "10", "22")),
+    # 000765: 연도+월이 붙고 그 사이 점이 콜론으로 오독됨
+    (["2025011:21 202511:21"], ("2025", "11", "21")),
+    # 000749: YYYY.MMDD 뒤에 글자/숫자가 더 붙어도 앞 4자리만 취함
+    (["MUJI EJJ 2026.01217A/A31 그E미인 까지스크 P6D리 가지스크"], ("2026", "01", "21")),
+    # 000777: 6자리 압축 YYYYMM, 만료 키워드가 같은 줄에 있을 때만
+    (["소비기한: 202603"], ("2026", "03", "NONE")),
+    # --- 09-13 부정 테스트: 새 규칙이 일반 텍스트에서 발동하면 안 됨 ---
+    (["내용량 10.15 g"], None),
+    (["품목보고번호 20130628332176"], None),
+    (["LOT 202603"], None),
 ]
 
 
@@ -146,3 +193,108 @@ def test_find_candidates_returns_scores():
     by_year = {c.y: c for c in cands}
     assert 2025 in by_year and 2026 in by_year
     assert by_year[2026].score > by_year[2025].score
+
+
+# --- 키워드 오독 교정 사전 -----------------------------------------------------
+
+def test_dict_correction_gives_까지_bonus():
+    assert extract_date(["2026.06.05파지1"]) == ("2026", "06", "05")
+    _, lines = explain(["2026.06.05파지1"])
+    assert "사전 교정: 파지->까지" in lines[0]
+    assert "뒤에 까지" in lines[0]
+
+
+def test_dict_does_not_break_latin_token_boundary():
+    # SEP 의 EP 는 앞에 S 가 붙어 있어 EXP 로 바뀌면 안 된다
+    assert extract_date(["SEP 2026"]) == ("2026", "09", "NONE")
+    _, lines = explain(["SEP 2026"])
+    assert "사전 교정" not in " ".join(lines)
+
+
+def test_dict_does_not_break_hangul_token_boundary():
+    # 소비기한 의 비기한 은 앞에 소 가 붙어 있어 교정 대상이 아니다
+    assert extract_date(["소비기한 2026.07.11"]) == ("2026", "07", "11")
+    _, lines = explain(["소비기한 2026.07.11"])
+    assert "사전 교정" not in " ".join(lines)
+
+
+def test_dict_ranks_as_expiry_keyword():
+    _, lines = explain(["소기한 2026.09.11"])
+    assert "만료 키워드 +2" in lines[0]
+
+
+def test_dict_neighbor_line_with_digits_not_corrected():
+    import dateparse
+    texts = ["소비기한 2026.09.11 까지", "PRD1234"]
+    corrected, whys = dateparse._correct_lines(texts)
+    assert corrected[1] == "PRD1234"
+    assert whys[1] == []
+
+
+def test_dict_neighbor_line_beyond_2x_height_not_corrected_with_geo():
+    import dateparse
+    texts = ["소비기한 2026.09.11 까지", "PRD"]
+    far_geo = [(100.0, 20.0), (400.0, 20.0)]   # 세로 거리 300 > 2*20
+    corrected, _ = dateparse._correct_lines(texts, far_geo)
+    assert corrected[1] == "PRD"
+    close_geo = [(100.0, 20.0), (130.0, 20.0)]  # 세로 거리 30 <= 2*20
+    corrected2, _ = dateparse._correct_lines(texts, close_geo)
+    assert corrected2[1] == "PROD"
+
+
+def test_dict_neighbor_line_applied_without_distance_check_when_geo_none():
+    import dateparse
+    texts = ["소비기한 2026.09.11 까지", "PRD"]
+    corrected, _ = dateparse._correct_lines(texts, None)
+    assert corrected[1] == "PROD"
+
+
+def test_expiry_words_use_and_valid():
+    # 사용기한, 유효기한: 의약품, 화장품, 수입품 표기 (09-12 추가). 유효기간은 음성메시지 문구 함정이라 제외
+    for kw in ("사용기한", "유효기한"):
+        best, why = explain([f"{kw} 2027.01.31", "2025.01.31"])
+        assert best == "2027-01-31"
+        assert any("만료 키워드" in w for w in why)
+
+
+@pytest.mark.parametrize("texts,expected", [
+    (["소비기한 2026.03.01", "유통기한 2026.05.01"], ("2026", "03", "01")),
+    (["소비기한 2026.03.01 유통기한 2026.05.01"], ("2026", "03", "01")),
+    (["유통기한 2026.05.01 소비기한 2026.08.01"], ("2026", "08", "01")),
+    (["소비기한 26.03.01", "유통기한 2026.05.01"], ("2026", "03", "01")),
+    (["유통기한 2026.05.01", "2025.01.01"], ("2026", "05", "01")),
+])
+def test_sobi_over_yutong(texts, expected):
+    # 소비기한과 유통기한이 함께 있으면 소비기한 (09-11 운영진 판정)
+    assert extract_date(texts) == expected
+
+
+def test_junk_boundary_rejects_word_embedded_digit():
+    # 9808KA1 의 '1' 이 날짜 첫 자리(일)로 잡히면 안 된다 (라틴 글자에 바로 붙은 숫자)
+    assert extract_date(["HERSHEYS KIttTens 9808KA1 10 2022"]) in (None, ("2022", "10", "NONE"))
+
+
+def test_junk_no_candidate_from_plain_text():
+    assert extract_date(["011399 Browin sugar in the chicken stock."]) is None
+
+
+def test_keyword_partial_beats_keywordless_complete_junk():
+    # '유통기한 02.07 까지' (부분, 만료 키워드) 이 키워드 없는 정크 완전 날짜보다 이겨야 한다
+    texts = ["유통기한 02.07 까지", "합민반에시학일 7002", "2808115726258088812714"]
+    assert extract_date(texts) == ("NONE", "02", "07")
+
+
+def test_normal_line_unaffected_by_new_rules():
+    assert extract_date(["소비기한 2026.05.17 까지"]) == ("2026", "05", "17")
+
+
+def test_legit_space_separated_date_still_parses():
+    assert extract_date(["05 04 2021"]) == ("2021", "04", "05")
+
+
+def test_packing_date_dropped():
+    # 포장일자만 있는 날짜는 소비기한이 아니므로 후보에서 뺀다 (09-12 운영진 답변)
+    assert extract_date(["포장일자 2026.05.29"]) is None
+    assert extract_date(["포장일자 2026.05.29", "소비기한 2026.08.01"]) == ("2026", "08", "01")
+    # 만료 키워드가 같은 줄에 있으면 유지
+    assert extract_date(["포장일 2026.05.29 까지"]) == ("2026", "05", "29")

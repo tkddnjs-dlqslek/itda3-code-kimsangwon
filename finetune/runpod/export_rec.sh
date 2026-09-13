@@ -8,8 +8,9 @@ INFER_DIR=./inference/rec_korean_v5_ft
 ONNX_OUT=/workspace/korean_PP-OCRv5_rec_ft.onnx
 
 python3 tools/export_model.py \
-    -c configs/rec/PP-OCRv5/PP-OCRv5_mobile_rec.yml \
-    -o Global.pretrained_model="$CKPT" Global.save_inference_dir="$INFER_DIR"
+    -c configs/rec/PP-OCRv5/multi_language/korean_PP-OCRv5_mobile_rec.yml \
+    -o Global.pretrained_model="$CKPT" Global.save_inference_dir="$INFER_DIR" \
+       Global.character_dict_path=./ppocr/utils/dict/ppocrv5_korean_dict.txt Global.use_space_char=true
 
 # Paddle 3.x 는 inference.json, 2.x 는 inference.pdmodel 을 씀. 있는 쪽으로 자동 선택
 if [ -f "$INFER_DIR/inference.json" ]; then
@@ -32,7 +33,7 @@ paddle2onnx \
 python3 - <<PY
 import onnx
 
-dict_path = "ppocr/utils/dict/ppocrv5_dict.txt"
+dict_path = "ppocr/utils/dict/ppocrv5_korean_dict.txt"
 chars = [l.rstrip("\n") for l in open(dict_path, encoding="utf-8")]
 model = onnx.load("$ONNX_OUT")
 # 기존에 같은 키가 있으면 지우고 새로 넣는다 (재실행 대비)
@@ -41,7 +42,7 @@ for i in reversed(del_idx):
     del model.metadata_props[i]
 prop = model.metadata_props.add()
 prop.key = "character"
-prop.value = "\n".join(chars)
+prop.value = "\n".join(chars) + "\n"   # 원본 korean v5 onnx 메타데이터와 같은 형식 (끝 줄바꿈 포함)
 onnx.save(model, "$ONNX_OUT")
 print(f"메타데이터 character 문자 수: {len(chars)}")
 PY
@@ -49,4 +50,4 @@ PY
 echo "완료: $ONNX_OUT"
 echo "로컬로 내려받아 weights/korean_PP-OCRv5_rec_ft.onnx 로 복사한 뒤"
 echo "python finetune/validate_local.py --rec korean_PP-OCRv5_rec_ft.onnx 로 검증."
-echo "(rapidocr 가 메타데이터를 못 읽는 버전이면 대안: RapidOCR(..., rec_keys_path='ppocrv5_dict.txt') 로 dict 파일을 같이 배포)"
+echo "(rapidocr 가 메타데이터를 못 읽는 버전이면 대안: RapidOCR(..., rec_keys_path='ppocrv5_korean_dict.txt') 로 dict 파일을 같이 배포)"

@@ -1,0 +1,93 @@
+id	action	label
+3	fix	Best By FEB/21/21 19:18NDL4C
+4	drop	일자 잘림
+6	fix	2021.06,28.A
+12	fix	10 2022
+18	drop	180도 뒤집힌 크롭
+27	fix	18:36 F1
+28	fix	유통기한
+29	fix	Expiry Date
+34	fix	SELL BY 03/03/21 LOT 651 EST 54
+41	fix	·유통기한:
+43	fix	Best Before Date: 01 SEP 2023
+46	drop	두 줄 섞임
+53	fix	21.05.15
+54	fix	EXP : 13 06 2021
+78	fix	2021.04.12
+125	fix	·유통기한:
+127	drop	앞글자 잘림
+128	fix	2020. 09.29
+130	drop	앞글자 잘림
+142	fix	2021.11.05 04:55까지
+147	fix	2021.11.17 09:48
+148	fix	유통기한 상단표시일까지
+151	drop	바운딩박스 오인식
+152	fix	01. 31까지 08:52
+153	fix	01. 31까지 08:52
+157	fix	BEST BY: OCT-19-2021
+161	drop	두 줄 섞임
+171	drop	두 줄 섞임
+173	drop	오른쪽 잘림
+175	fix	02.19까지 F1
+178	fix	21 02 01 12:02부터
+181	fix	유통기한
+185	drop	판독 불가
+188	fix	2019.07.03까지
+202	fix	2022.07.12까지
+205	fix	EXP:2021/11/18
+206	drop	글자 겹침
+209	fix	04/08/2023
+210	drop	사용자 메모와 크롭 불일치
+214	fix	BBE NOV 29 2021
+217	fix	2022.01.21까지
+219	drop	LOT 숫자 불확실
+222	fix	EXP: 10 AUG 2022
+224	fix	유통기한
+226	drop	글자 겹침
+232	fix	사용기한:2023.03.15
+234	drop	끝 글자 불확실
+235	drop	끝 글자 불확실
+237	drop	바운딩박스 잘림
+238	drop	긴 문장 오인식 다수
+239	drop	긴 문장 오인식 다수
+241	fix	유통기한
+247	fix	u(2018년 9월 기준)
+248	fix	04. 17까지15:59
+249	fix	04. 17까지15:59
+251	fix	24/12/21
+252	fix	BEST BY 21 APR/21
+253	fix	BEST BY 21 APR/21
+261	fix	2023. 03 03
+262	fix	28/03/23
+265	fix	BEST IF USED
+269	drop	180도 뒤집힌 크롭
+282	fix	02.12까지 120520
+288	fix	2021.03.18
+305	fix	유통기한 21.12.22까지F2C2
+307	drop	180도 뒤집힌 크롭
+314	fix	08.09.22
+322	drop	끝글자 잘림
+340	fix	04-2023
+342	fix	2021.06
+344	fix	05.2023
+345	fix	유통기한-BEST BEFORE
+347	fix	32,6 g
+350	drop	뒷부분 판독 불가
+355	fix	BBE 01 07 2021
+361	fix	BEST BEFORE
+363	fix	18/04/2021
+368	fix	EXP:01.2022
+370	fix	16.03.2021
+379	fix	Best Before (유통기한)
+389	fix	유통기한
+403	fix	포장 2020 07 22
+414	fix	2021.06.09 까지
+428	fix	Exp: EXP NOV 05 2022
+429	fix	12.10.2025
+432	fix	BEST IF USED BY
+445	fix	15:00
+448	fix	유통기한 후면 표기일까지
+452	fix	·유통기한:
+463	drop	판독 불가
+474	drop	오른쪽 잘림
+475	fix	25.12.10.22시

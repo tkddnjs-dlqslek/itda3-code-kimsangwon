@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
-"""hard_labels.xlsx 에서 사용자가 채운 라벨을 train_label.txt 에 합친다.
+"""수동 라벨 엑셀에서 사용자가 채운 라벨을 train_label.txt 에 합친다.
 
 python finetune/build_labels.py [--data finetune/data] [--val-frac 0.0]
+python finetune/build_labels.py --data finetune/data_v2
 
-- label 이 비어있거나 skip 이 x/o/1/true 인 행은 건너뜀
+- data_v2/rec/manual_labels.xlsx (정답 컬럼, rec/manual/<file>) 가 있으면 그걸 쓰고,
+  없으면 data/rec/hard_labels.xlsx (label 컬럼, rec/hard/<file>) 로 예전처럼 동작한다.
+- 정답/label 이 비어있거나 "제외"거나, skip 컬럼이 있고 x/o/1/true 면 건너뜀
 - 라벨 문자가 korean_PP-OCRv5_rec_mobile.onnx 의 character 메타데이터(ONNX 딕셔너리)에
   없는 문자를 포함하면 경고하고 건너뜀 (공백은 PP-OCRv5 계열이 use_space_char=True 라 허용)
-- 통과한 라벨은 rec/hard/<file>\t<label> 로 train_label.txt 에 append (--val-frac > 0 이면
+- 통과한 라벨은 <crop_dir>/<file>\t<label> 로 train_label.txt 에 append (--val-frac > 0 이면
   이미지 단위로 일부를 val_label.txt 로 돌림, seed 42)
 """
 from __future__ import annotations
@@ -19,6 +22,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
 _REC_ONNX = os.path.join(_REPO, "weights", "korean_PP-OCRv5_rec_mobile.onnx")
 _SKIP_VALUES = {"x", "o", "1", "true", "yes", "skip"}
+_EXCLUDE_VALUES = {"제외", "exclude"}
 
 
 def _load_dict_chars(onnx_path: str) -> set:
@@ -36,10 +40,14 @@ def main() -> None:
     ap.add_argument("--val-frac", type=float, default=0.0)
     args = ap.parse_args()
     data_dir = os.path.abspath(args.data)
-    xlsx_path = os.path.join(data_dir, "rec", "hard_labels.xlsx")
-
-    if not os.path.exists(xlsx_path):
-        print(f"없음: {xlsx_path} (prep_rec_data.py 먼저 실행, hard 크롭이 0개면 파일 자체가 안 생김)")
+    manual_path = os.path.join(data_dir, "rec", "manual_labels.xlsx")
+    hard_path = os.path.join(data_dir, "rec", "hard_labels.xlsx")
+    if os.path.exists(manual_path):
+        xlsx_path, label_col, id_col, crop_subdir = manual_path, "정답", "이미지 번호", "rec/manual"
+    elif os.path.exists(hard_path):
+        xlsx_path, label_col, id_col, crop_subdir = hard_path, "label", "image_id", "rec/hard"
+    else:
+        print(f"없음: {manual_path} 또는 {hard_path} (prep_rec_data*.py 먼저 실행)")
         return
 
     allowed = None
@@ -60,13 +68,14 @@ def main() -> None:
         if r is None or r[idx["file"]] is None:
             continue
         file_ = str(r[idx["file"]]).strip()
-        image_id = str(r[idx["image_id"]]).strip() if r[idx["image_id"]] is not None else ""
-        label = r[idx["label"]]
-        skip = r[idx["skip"]]
-        if skip is not None and str(skip).strip().lower() in _SKIP_VALUES:
-            skipped_flag += 1
-            continue
-        if label is None or not str(label).strip():
+        image_id = str(r[idx[id_col]]).strip() if r[idx[id_col]] is not None else ""
+        label = r[idx[label_col]]
+        if "skip" in idx:
+            skip = r[idx["skip"]]
+            if skip is not None and str(skip).strip().lower() in _SKIP_VALUES:
+                skipped_flag += 1
+                continue
+        if label is None or not str(label).strip() or str(label).strip().lower() in _EXCLUDE_VALUES:
             skipped_empty += 1
             continue
         label = str(label).strip()
@@ -92,7 +101,7 @@ def main() -> None:
     n_train = n_val_written = 0
     with open(train_path, "a", encoding="utf-8") as ft, open(val_path, "a", encoding="utf-8") as fv:
         for file_, label, iid in kept:
-            line = f"rec/hard/{file_}\t{label}\n"
+            line = f"{crop_subdir}/{file_}\t{label}\n"
             if iid in val_ids:
                 fv.write(line)
                 n_val_written += 1

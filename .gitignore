@@ -30,6 +30,16 @@ labels/sheets*/
 
 # ===== 파인튜닝 데이터/산출물 =====
 finetune/data/
+finetune/data_v2/
 finetune/output/
 finetune/*.log
 *.pdparams
+
+# 업로드 묶음과 실행 로그 (커밋 대상 아님, 09-13)
+*.tar.gz
+finetune/*.err
+labels/*.err
+labels/*.log
+
+# 검수용 썸네일 (09-13)
+labels/thumbs/
