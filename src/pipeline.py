@@ -21,9 +21,11 @@ _budget = {"deadline": None, "remaining": 0}
 
 # 남은 장당 예산(초) 임계값. 500장/2280초 예산(장당 4.56초)에서 여유가 있을 때만 비싼 단계를
 # 허용하고, 빠듯해지면 회전·재시도(clahe/hires/up2x/erode)부터, 더 빠듯하면 s2/det5까지 접는다.
+# 09-15 재조정: 6.0/2.0 은 시작부터 장당 4.56초라 처음 150장을 축소 모드로 돌려 늦은 단계 정답을 잃었다.
+# 리눅스 재현 실측 평균 1.5초/장의 2배인 3.0 을 full 기준으로 둔다. 채점 서버가 3배 느려도 2,400초 안.
 # ponytail: 고정 휴리스틱 값. 실측 s/img 분포가 크게 달라지면 다시 캘리브레이션할 것.
-_FULL_MIN_S = 6.0
-_CHEAP_MIN_S = 2.0
+_FULL_MIN_S = 3.0
+_CHEAP_MIN_S = 1.0
 
 
 def set_budget(total_seconds: float | None, n_images: int) -> None:

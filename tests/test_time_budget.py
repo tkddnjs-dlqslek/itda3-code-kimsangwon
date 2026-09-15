@@ -21,13 +21,13 @@ def test_ahead_of_schedule_stays_full(monkeypatch):
 
 def test_behind_schedule_falls_to_cheap(monkeypatch):
     monkeypatch.setattr(pipeline.time, "time", lambda: 1000.0)
-    pipeline.set_budget(30.0, 10)  # deadline=1030, 장당 3초 (FULL_MIN=6 미만, CHEAP_MIN=2 이상)
+    pipeline.set_budget(20.0, 10)  # deadline=1020, 장당 2초 (FULL_MIN=3 미만, CHEAP_MIN=1 이상)
     assert pipeline._decide_stage(True) == (False, "cheap")
 
 
 def test_critical_falls_to_s1_only(monkeypatch):
     monkeypatch.setattr(pipeline.time, "time", lambda: 1000.0)
-    pipeline.set_budget(10.0, 10)  # 장당 1초 (CHEAP_MIN 미만)
+    pipeline.set_budget(5.0, 10)  # 장당 0.5초 (CHEAP_MIN 미만)
     assert pipeline._decide_stage(True) == (False, "s1")
 
 
@@ -55,7 +55,7 @@ def test_predict_one_uses_budget_and_decrements_remaining(monkeypatch):
     assert list(row) == ["image_id", "year", "month", "day", "final_date", "stage", "texts", "raw"]
     assert pipeline._budget["remaining"] == 1
 
-    t[0] = 15.0  # 남은 5초 / 남은 1장 -> cheap 대역, retry_upscale 요청해도 강제로 False
+    t[0] = 18.0  # 남은 2초 / 남은 1장 -> cheap 대역, retry_upscale 요청해도 강제로 False
     pipeline.predict_one("fake2.jpg", strict=False, retry_upscale=True)
     assert calls[-1] == (False, "cheap")
     assert pipeline._budget["remaining"] == 0
