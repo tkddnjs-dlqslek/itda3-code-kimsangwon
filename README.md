@@ -27,7 +27,10 @@ bash download_weights.sh
 가중치는 Git에 커밋하지 않습니다(`.gitignore`). 노트북 실행 도중에는 다운로드를 시도하지 않고,
 `download_weights.sh` 로 미리 받아둔 로컬 파일만 `download_enabled=False` 상당으로 오프라인 로드합니다.
 
-## 3. 노트북 실행
+## 3. 노트북 실행 (채점 재현성 검증)
+
+채점 환경 (09-14 운영진 공지): Ubuntu 22.04 LTS (x86_64), Python 3.10, CPU 4코어, RAM 8GB, GPU 없음,
+인터넷 차단, 팀별 독립 가상환경(venv)에 `requirements.txt` 설치 후 실행.
 
 ```bash
 export ITDA_INPUT_DIR=./val_images
@@ -38,6 +41,17 @@ jupyter nbconvert --to notebook --execute predict.ipynb \
 ```
 
 레포 루트에서 실행하는 것을 전제로 합니다(`predict.ipynb` 가 `src/` 를 `sys.path` 에 추가).
+
+### 제출 전 자가 점검 (운영진 안내 순서)
+
+1. 저장소를 새 폴더에 clone
+2. 새 가상환경 생성 후 `pip install -r requirements.txt`
+3. `bash download_weights.sh` 실행
+4. 인터넷 연결 해제
+5. 위 명령어 실행 후 `submission.csv` 생성 확인
+
+- 노트북은 가중치를 내려받지 않고 `weights/` 의 로컬 파일만 읽습니다.
+- 로컬 경로 하드코딩과 GPU 코드(cuda)는 없습니다. 입력과 출력 경로는 환경변수로만 받습니다.
 `input()` 등 대화형 코드, 로컬 절대경로 하드코딩은 없습니다.
 
 ## 4. 아키텍처 요약
