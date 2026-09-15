@@ -46,7 +46,10 @@ jupyter nbconvert --to notebook --execute predict.ipynb \
     --output /tmp/executed.ipynb
 ```
 
-레포 루트에서 실행하는 것을 전제로 합니다(`predict.ipynb` 가 `src/` 를 `sys.path` 에 추가).
+`predict.ipynb` 는 노트북 하나만으로 실행됩니다. `src/` 의 모듈 원문(dateparse, ocr, pipeline)을 셀 안에 그대로
+넣고 실행 시 모듈로 등록하므로 `src/` 폴더가 없어도 동작합니다. 가중치만 저장소 루트의 `weights/` 에 있으면 됩니다.
+`src/` 는 테스트와 개발용 원본이며, 고치면 `python tools/build_notebook.py` 로 노트북을 다시 만듭니다
+(`tests/test_notebook_sync.py` 가 둘이 같은지 검사).
 
 ### 제출 전 자가 점검 (운영진 안내 순서)
 
