@@ -35,9 +35,12 @@ def main() -> None:
     config = code[0]
     assert "".join(config["source"]).startswith("# ===== CONFIG ====="), "첫 셀이 CONFIG 셀이 아님"
 
-    # 기존 두 번째 셀(src/ 를 sys.path 에 넣고 import)을 모듈 등록 셀들로 바꾼다. 나머지는 그대로
-    tail = code[2:]
-    assert "list_images" in "".join(tail[0]["source"]), "세 번째 셀 구성이 예상과 다름"
+    # 이미지 목록 셀부터 끝까지는 그대로 두고, 그 앞(sys.path import 또는 이전에 생성한 모듈 셀)은 새로 만든다.
+    # 위치가 아니라 내용으로 찾으므로 원본 노트북과 이미 변환된 노트북 모두에서 다시 돌릴 수 있다.
+    # (모듈 원문 셀에도 "list_images" 정의가 있으므로 노트북 셀에만 있는 호출문으로 찾는다)
+    starts = [i for i, c in enumerate(code) if "pipeline.list_images(INPUT_DIR)" in "".join(c["source"])]
+    assert len(starts) == 1, "이미지 목록 셀(pipeline.list_images(INPUT_DIR))이 정확히 하나여야 함"
+    tail = code[starts[0]:]
 
     helper = code_cell(
         "# 노트북 하나만으로 실행되도록 src/ 코드를 셀 안에 넣고 모듈로 등록한다 (저장소의 src/ 폴더가 없어도 동작).\n"
@@ -45,8 +48,10 @@ def main() -> None:
         "\n"
         "def _register_module(name, source):\n"
         "    mod = types.ModuleType(name)\n"
-        "    # ocr.py 는 가중치 폴더를 이 파일 위치 기준 ../weights 로 찾는다. 저장소 루트의 weights/ 를 가리키게 둔다\n"
-        "    mod.__file__ = os.path.abspath(os.path.join(\"src\", name + \".py\"))\n"
+        "    # ocr.py 는 가중치 폴더를 이 파일 위치 기준 ../weights 로 찾는다. 리눅스는 '..' 앞 폴더가 실제로\n"
+        "    # 있어야 경로를 풀므로(src/ 가 없으면 실패), 항상 존재하는 weights/ 안을 파일 위치로 둔다.\n"
+        "    # -> weights/../weights == 저장소 루트의 weights/\n"
+        "    mod.__file__ = os.path.join(os.path.abspath(\"weights\"), name + \".py\")\n"
         "    sys.modules[name] = mod          # exec 전에 등록해야 dataclass 와 모듈 간 import 가 동작\n"
         "    exec(compile(source, mod.__file__, \"exec\"), mod.__dict__)\n"
         "    return mod\n")
