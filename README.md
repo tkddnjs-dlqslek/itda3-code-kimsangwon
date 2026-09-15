@@ -11,18 +11,24 @@ pip install -r requirements.txt
 
 CPU 전용(GPU, torch 없음), 인터넷 차단 환경(4 vCPU)에서 그대로 동작하도록 맞춰져 있습니다.
 
+`requirements.txt` 의 `opencv-python @ ...whl` 한 줄은 파일이 없는 빈 휠입니다. `rapidocr-onnxruntime` 이
+일반판 `opencv-python` 을 요구하는데, 그 `cv2` 는 `libGL.so.1` 이 필요해 서버용 Ubuntu 22.04에서 import가
+실패합니다. 빈 휠로 요구만 채우고 실제 `cv2` 는 `opencv-python-headless` 가 제공합니다
+(순정 `ubuntu:22.04` 컨테이너에서 확인).
+
 ## 2. 가중치 다운로드 (채점 전 1회)
 
 ```bash
 bash download_weights.sh
 ```
 
-`weights/` 에 아래 3개 rec/det ONNX 가중치를 받아옵니다. det 기본 모델은 `rapidocr-onnxruntime`
+`weights/` 에 아래 4개 rec/det ONNX 가중치를 받아옵니다. det 기본 모델은 `rapidocr-onnxruntime`
 패키지에 동봉되어 있어 별도 다운로드가 필요 없습니다.
 
 - `ch_PP-OCRv5_det_mobile.onnx` (재시도용 v5 검출기, 도트 프린팅에 강함)
 - `korean_PP-OCRv5_rec_mobile.onnx` (기본 인식기)
 - `ch_PP-OCRv3_rec_infer.onnx` (숫자 재확인용 인식기)
+- `korean_PP-OCRv5_rec_ft_v2.onnx` (재시도 단계 전용 파인튜닝 인식기, 이 저장소 Release v1.0.0에서 받음)
 
 가중치는 Git에 커밋하지 않습니다(`.gitignore`). 노트북 실행 도중에는 다운로드를 시도하지 않고,
 `download_weights.sh` 로 미리 받아둔 로컬 파일만 `download_enabled=False` 상당으로 오프라인 로드합니다.

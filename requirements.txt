@@ -1,6 +1,10 @@
 rapidocr-onnxruntime==1.3.24
 onnxruntime==1.18.1
 opencv-python-headless==4.9.0.80
+# rapidocr-onnxruntime requires opencv-python, whose cv2 build needs libGL and fails to import
+# on server Ubuntu. This empty placeholder wheel satisfies that requirement without installing
+# any files, so cv2 comes only from opencv-python-headless above.
+opencv-python @ https://github.com/tkddnjs-dlqslek/itda3-code-kimsangwon/releases/download/v1.0.0/opencv_python-4.11.0.86-py3-none-any.whl
 numpy==1.26.4
 pandas==2.2.2
 Pillow==10.3.0
