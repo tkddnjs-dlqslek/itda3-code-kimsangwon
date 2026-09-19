@@ -1,1 +1,47 @@
-<!doctype html><meta charset="utf-8"><title>소비기한 입고 검수</title><p>준비 중</p>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>소비기한 입고 검수</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>소비기한 입고 검수</h1>
+    <nav><a href="/">촬영</a><a href="stock.html">재고 목록</a></nav>
+  </header>
+  <main>
+    <section>
+      <video id="video" playsinline muted></video>
+      <div class="bar">
+        <span class="phase" id="phase">카메라 준비 중</span>
+        <button id="shoot">지금 촬영</button>
+        <button id="rebase">배경 다시 잡기</button>
+      </div>
+      <p class="msg" id="msg">상품 뒷면을 카메라 앞에 대고 잠시 멈추면 자동으로 촬영합니다.</p>
+      <canvas id="small" width="64" height="48" hidden></canvas>
+      <canvas id="full" hidden></canvas>
+    </section>
+    <aside>
+      <div class="card" id="form" hidden>
+        <h2>판독 결과 <span class="badge" id="badge"></span></h2>
+        <label>바코드</label><input id="barcode" inputmode="numeric">
+        <div class="bar"><button id="rescan">바코드 다시 읽기</button><button id="find">상품 찾기</button></div>
+        <label>상품명</label><input id="pname">
+        <label>소비기한 (연, 월, 일. 못 읽은 칸은 비워 둠)</label>
+        <div class="date">
+          <input class="datepart" id="year" maxlength="4" inputmode="numeric" placeholder="YYYY">
+          <input class="datepart" id="month" maxlength="2" inputmode="numeric" placeholder="MM">
+          <input class="datepart" id="day" maxlength="2" inputmode="numeric" placeholder="DD">
+        </div>
+        <ul class="evidence" id="evidence"></ul>
+        <div class="bar"><button class="primary" id="save">저장</button><button id="skip">버리기</button></div>
+      </div>
+      <section id="manual"></section>
+    </aside>
+  </main>
+  <script src="vendor/zxing-browser.min.js"></script>
+  <script type="module" src="scan.js"></script>
+</body>
+</html>

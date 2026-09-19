@@ -1,0 +1,28 @@
+:root { --ink:#1d1d1f; --dim:#86868b; --line:#d2d2d7; --blue:#0071e3; --red:#d70015; --bg:#fbfbfd; }
+* { box-sizing: border-box; }
+body { margin:0; font:15px/1.5 "Malgun Gothic", system-ui, sans-serif; color:var(--ink); background:var(--bg); }
+header { display:flex; justify-content:space-between; align-items:baseline; padding:16px 24px; border-bottom:1px solid var(--line); }
+header h1 { font-size:20px; margin:0; }
+header a { color:var(--blue); text-decoration:none; margin-left:16px; }
+main { display:grid; grid-template-columns:minmax(0,3fr) minmax(320px,2fr); gap:24px; padding:24px; }
+@media (max-width:900px) { main { grid-template-columns:1fr; } }
+video { width:100%; background:#000; border-radius:8px; }
+.bar { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.phase { font-weight:700; }
+button { font:inherit; padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; }
+button.primary { background:var(--blue); border-color:var(--blue); color:#fff; }
+.card { border:1px solid var(--line); border-radius:8px; padding:16px; background:#fff; }
+.card h2 { font-size:16px; margin:0 0 12px; }
+label { display:block; font-size:12px; color:var(--dim); margin-top:10px; }
+input { font:inherit; width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; }
+.date { display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px; }
+.review input.datepart { border-color:var(--red); background:#fff5f5; }
+.badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; color:#fff; background:var(--blue); }
+.review .badge { background:var(--red); }
+.evidence { font-size:12px; color:var(--dim); margin:10px 0 0; padding-left:16px; max-height:140px; overflow:auto; }
+.msg { min-height:22px; color:var(--dim); margin-top:8px; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:14px; }
+th { font-size:12px; color:var(--dim); font-weight:400; }
+.expired { color:var(--red); font-weight:700; } .imminent { color:#b25000; font-weight:700; } .unknown { color:var(--dim); }
+[hidden] { display:none !important; }
