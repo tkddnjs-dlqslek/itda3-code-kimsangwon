@@ -41,22 +41,27 @@ function tick() {
 }
 
 function readBarcode() {
-  full.width = video.videoWidth;
-  full.height = video.videoHeight;
-  full.getContext("2d").drawImage(video, 0, 0);
-  try { return reader.decodeFromCanvas(full).getText(); } catch (e) { return ""; }   // 못 찾으면 예외
+  if (video.readyState < 2) return "";
+  try {
+    full.width = video.videoWidth;
+    full.height = video.videoHeight;
+    full.getContext("2d").drawImage(video, 0, 0);
+    return reader.decodeFromCanvas(full).getText();
+  } catch (e) { return ""; }   // 못 찾으면 예외
 }
 
 async function capture() {
+  if (video.readyState < 2) return;   // 프레임이 아직 없으면 찍지 않는다 (busy 를 세우기 전에 확인)
   busy = true;
   capturedAt = performance.now();
-  const barcode = readBarcode();
-  const blob = await new Promise((resolve) => full.toBlob(resolve, "image/jpeg", 0.92));
-  const body = new FormData();
-  body.append("image", blob, "frame.jpg");
-  body.append("barcode", barcode);
   $("phase").textContent = "판독 중";
   try {
+    const barcode = readBarcode();
+    const blob = await new Promise((resolve) => full.toBlob(resolve, "image/jpeg", 0.92));
+    if (!blob) throw new Error("이미지를 만들지 못했습니다");
+    const body = new FormData();
+    body.append("image", blob, "frame.jpg");
+    body.append("barcode", barcode);
     const res = await fetch("/api/scan", { method: "POST", body });
     if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
     showForm(await res.json(), barcode);
@@ -92,7 +97,7 @@ function closeForm(message) {
 }
 
 async function save() {
-  const year = part("year", 4), month = part("month", 2), day = part("day", 2);
+  const year = $("year").value.trim() || "NONE", month = part("month", 2), day = part("day", 2);
   const item = {
     barcode: $("barcode").value.trim(), product_name: $("pname").value.trim(), year, month, day,
     confidence: ocr.confidence, needs_review: ocr.needs_review, stage: ocr.stage, evidence: ocr.evidence,
