@@ -105,7 +105,7 @@ jupyter nbconvert --to notebook --execute predict.ipynb \
 
 ## 6-2. 시연용 입고 검수 앱 (채점 대상 아님)
 
-`app/` 에 카메라 자동 촬영, 바코드 인식, 신뢰도 기반 확인, 기한 순 재고 목록을 묶은 시연용 웹 앱이
+`app/` 에 카메라 자동 촬영, 바코드 인식, 신뢰도 기반 확인과 기한 순 재고 목록을 묶은 시연용 웹 앱이
 있습니다. `predict.ipynb` 와 `requirements.txt` 는 이 앱과 무관하며, 실행 방법은 `app/README.md` 에 있습니다.
 
 ## 7. 테스트

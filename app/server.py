@@ -96,7 +96,9 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
     @app.get("/api/items.csv", response_class=PlainTextResponse)
     def items_csv():
         with _db_lock:
-            return PlainTextResponse(store.to_csv(conn), media_type="text/csv; charset=utf-8")
+            csv_text = store.to_csv(conn)
+        return PlainTextResponse("﻿" + csv_text, media_type="text/csv; charset=utf-8",
+                                  headers={"Content-Disposition": "attachment; filename=items.csv"})
 
     @app.get("/api/stats")
     def stats():

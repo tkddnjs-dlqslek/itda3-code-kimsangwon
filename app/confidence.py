@@ -66,7 +66,13 @@ def load_table(path: str = TABLE_PATH) -> dict:
         return json.load(f)
 
 
+def needs_review(key: str, conf: float) -> bool:
+    if key == "none":
+        return True
+    return conf < REVIEW_THRESHOLD or key.split("|")[1] == "part"   # 부분 날짜는 표 점수와 무관하게 항상 확인
+
+
 def assess(texts, stage: str, year: str, month: str, day: str, table: dict) -> dict:
     key = bucket_key(texts, stage, year, month, day)
     conf = lookup(key, table)
-    return {"confidence": conf, "needs_review": conf < REVIEW_THRESHOLD, "bucket": key}
+    return {"confidence": conf, "needs_review": needs_review(key, conf), "bucket": key}

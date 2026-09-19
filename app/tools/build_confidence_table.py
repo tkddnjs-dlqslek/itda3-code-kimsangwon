@@ -48,8 +48,8 @@ def cross_validate(rows):
     for fold in ("A", "B"):
         train, evl = _ids(f"fold_{fold}_train_ids.txt"), _ids(f"fold_{fold}_eval_ids.txt")
         table = confidence.build_table((k, ok) for i, k, ok in rows if i in train)
-        auto = [ok for i, k, ok in rows if i in evl and confidence.lookup(k, table) >= confidence.REVIEW_THRESHOLD]
-        review = [ok for i, k, ok in rows if i in evl and confidence.lookup(k, table) < confidence.REVIEW_THRESHOLD]
+        auto = [ok for i, k, ok in rows if i in evl and not confidence.needs_review(k, confidence.lookup(k, table))]
+        review = [ok for i, k, ok in rows if i in evl and confidence.needs_review(k, confidence.lookup(k, table))]
         lines.append(
             f"fold {fold}: 자동 통과 {len(auto)}/{len(auto) + len(review)} "
             f"({len(auto) / (len(auto) + len(review)):.1%}), 자동 통과 정답률 {sum(auto) / max(len(auto), 1):.1%}, "

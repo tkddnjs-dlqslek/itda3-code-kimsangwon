@@ -56,6 +56,18 @@ def test_assess_flags_low_confidence_for_review():
     assert lo["needs_review"] is True and lo["confidence"] == 0.6
 
 
+def test_needs_review_flags_partial_dates_regardless_of_confidence():
+    assert confidence.needs_review("first|part|nokw|clear", 0.96) is True
+
+
+def test_needs_review_flags_none_bucket():
+    assert confidence.needs_review("none", 0.99) is True
+
+
+def test_needs_review_passes_full_bucket_at_high_confidence():
+    assert confidence.needs_review("first|full|kw|clear", 0.97) is False
+
+
 def test_tool_replays_gold_predictions():
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
     import build_confidence_table as tool

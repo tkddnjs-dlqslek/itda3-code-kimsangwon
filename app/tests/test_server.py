@@ -50,7 +50,10 @@ def test_save_then_list_and_csv_and_stats(client):
     assert client.post("/api/items", json=item).json() == {"id": 1}
     rows = client.get("/api/items").json()
     assert rows[0]["final_date"] == "2026-09-25" and rows[0]["status"] in {"expired", "imminent", "ok"}
-    assert "시연용 우유 900ml" in client.get("/api/items.csv").text
+    csv_resp = client.get("/api/items.csv")
+    assert csv_resp.text.startswith("﻿")
+    assert csv_resp.headers["content-disposition"] == "attachment; filename=items.csv"
+    assert "시연용 우유 900ml" in csv_resp.text
     assert client.get("/api/stats").json()["modes"]["scan"] == {"n": 1, "avg_seconds": 4.5}
 
 
