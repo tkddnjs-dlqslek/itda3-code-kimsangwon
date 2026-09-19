@@ -38,10 +38,26 @@
         <ul class="evidence" id="evidence"></ul>
         <div class="bar"><button class="primary" id="save">저장</button><button id="skip">버리기</button></div>
       </div>
-      <section id="manual"></section>
+      <section id="manual" class="card" style="margin-top:16px">
+        <h2>수기 입력 (비교 측정용)</h2>
+        <p class="msg">상품을 집어 든 순간 "시작"을 누르고, 눈으로 읽어 입력한 뒤 저장합니다.</p>
+        <div class="bar"><button id="mstart">시작</button><span id="mtimer" class="phase"></span></div>
+        <div id="mfields" hidden>
+          <label>바코드 숫자</label><input id="mbarcode" inputmode="numeric">
+          <label>상품명</label><input id="mpname">
+          <label>소비기한</label>
+          <div class="date">
+            <input id="myear" maxlength="4" inputmode="numeric" placeholder="YYYY">
+            <input id="mmonth" maxlength="2" inputmode="numeric" placeholder="MM">
+            <input id="mday" maxlength="2" inputmode="numeric" placeholder="DD">
+          </div>
+          <div class="bar"><button class="primary" id="msave">저장</button></div>
+        </div>
+      </section>
     </aside>
   </main>
   <script src="vendor/zxing-browser.min.js"></script>
   <script type="module" src="scan.js"></script>
+  <script type="module" src="manual.js"></script>
 </body>
 </html>

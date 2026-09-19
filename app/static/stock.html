@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>재고 목록</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>재고 목록 (기한 빠른 순)</h1>
+    <nav><a href="/">촬영</a><a href="stock.html">재고 목록</a><a href="/api/items.csv">CSV 내려받기</a></nav>
+  </header>
+  <main style="grid-template-columns:1fr">
+    <div class="card" id="stats"></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>상태</th><th>소비기한</th><th>남은 일수</th><th>상품</th><th>바코드</th><th>신뢰도</th><th>입력</th><th>소요</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+  <script type="module" src="stock.js"></script>
+</body>
+</html>
