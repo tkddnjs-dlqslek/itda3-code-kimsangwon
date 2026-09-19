@@ -1,0 +1,107 @@
+# -*- coding: utf-8 -*-
+"""입고 검수 서버. 브라우저가 보낸 프레임 한 장을 기존 OCR 파이프라인으로 판독하고 신뢰도를 붙인다.
+
+실행 (저장소 루트에서):
+    python -m uvicorn server:create_app --factory --app-dir app --port 8000
+"""
+from __future__ import annotations
+
+import datetime
+import os
+import sys
+import tempfile
+import threading
+import time
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "src"))
+import confidence  # noqa: E402
+import products  # noqa: E402
+import store  # noqa: E402
+
+DB_PATH = os.path.join(HERE, ".data", "items.db")
+STATIC = os.path.join(HERE, "static")
+_ocr_lock = threading.Lock()     # predict_one 은 전역 상태를 쓰고 CPU 를 다 쓰므로 한 번에 하나만
+_db_lock = threading.Lock()
+
+
+def run_ocr(path: str) -> dict:
+    import pipeline              # 무거운 임포트는 첫 판독까지 미룬다. 테스트는 이 함수를 바꿔 끼운다
+    with _ocr_lock:
+        return pipeline.predict_one(path, strict=False, retry_upscale=True)
+
+
+class ItemIn(BaseModel):
+    barcode: str = ""
+    product_name: str = ""
+    year: str = Field(pattern=r"^(\d{4}|NONE)$")
+    month: str = Field(pattern=r"^(\d{2}|NONE)$")
+    day: str = Field(pattern=r"^(\d{2}|NONE)$")
+    confidence: float | None = None
+    needs_review: bool = False
+    edited: bool = False
+    stage: str = ""
+    evidence: list[str] = []
+    mode: str = Field(default="scan", pattern=r"^(scan|manual)$")
+    seconds: float | None = None
+
+
+def create_app(db_path: str = DB_PATH) -> FastAPI:
+    if os.path.dirname(db_path):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = store.connect(db_path)
+    table = confidence.load_table()
+    catalog = products.load()
+    app = FastAPI(title="소비기한 입고 검수")
+
+    @app.post("/api/scan")
+    def scan(image: UploadFile = File(...), barcode: str = Form("")):
+        t0 = time.time()
+        suffix = os.path.splitext(image.filename or "")[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+            f.write(image.file.read())
+            tmp = f.name
+        try:
+            row = run_ocr(tmp)
+        finally:
+            os.unlink(tmp)
+        verdict = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)
+        return {"year": row["year"], "month": row["month"], "day": row["day"], "final_date": row["final_date"],
+                **verdict, "stage": row["stage"], "evidence": row["texts"][:12],
+                "product": products.lookup(barcode, catalog), "elapsed_ms": int((time.time() - t0) * 1000)}
+
+    @app.get("/api/product/{barcode}")
+    def product(barcode: str):
+        found = products.lookup(barcode, catalog)
+        if found is None:
+            raise HTTPException(status_code=404, detail="등록되지 않은 바코드")
+        return found
+
+    @app.post("/api/items")
+    def save(item: ItemIn):
+        with _db_lock:
+            return {"id": store.add_item(conn, item.model_dump())}
+
+    @app.get("/api/items")
+    def items():
+        with _db_lock:
+            return store.list_items(conn, datetime.date.today())
+
+    @app.get("/api/items.csv", response_class=PlainTextResponse)
+    def items_csv():
+        with _db_lock:
+            return PlainTextResponse(store.to_csv(conn), media_type="text/csv; charset=utf-8")
+
+    @app.get("/api/stats")
+    def stats():
+        with _db_lock:
+            return store.stats(conn)
+
+    app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")   # API 라우트 뒤에 둬야 가로채지 않는다
+    return app
