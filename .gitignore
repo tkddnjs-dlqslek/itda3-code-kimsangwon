@@ -46,3 +46,4 @@ labels/thumbs/
 
 # 입고 검수 앱 로컬 DB (09-19)
 app/.data/
+.gstack/

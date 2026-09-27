@@ -27,6 +27,7 @@ import store  # noqa: E402
 
 DB_PATH = os.path.join(HERE, ".data", "items.db")
 STATIC = os.path.join(HERE, "static")
+MAX_SECONDS = 8.0            # 장당 상한. 단계 사이에서만 확인하므로 실제로는 한 단계 길이만큼 넘을 수 있다
 _ocr_lock = threading.Lock()     # predict_one 은 전역 상태를 쓰고 CPU 를 다 쓰므로 한 번에 하나만
 _db_lock = threading.Lock()
 
@@ -34,7 +35,7 @@ _db_lock = threading.Lock()
 def run_ocr(path: str) -> dict:
     import pipeline              # 무거운 임포트는 첫 판독까지 미룬다. 테스트는 이 함수를 바꿔 끼운다
     with _ocr_lock:
-        return pipeline.predict_one(path, strict=False, retry_upscale=True)
+        return pipeline.predict_one(path, strict=False, retry_upscale=True, max_seconds=MAX_SECONDS)
 
 
 class ItemIn(BaseModel):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 
 import cv2
 import numpy as np
@@ -17,8 +18,7 @@ import dateparse
 
 __all__ = ["STAGES", "read", "read_raw", "hybrid_rec", "group_lines", "group_lines_geo"]
 
-STAGES = ("s1", "s2", "det5", "rot90", "rot270", "rot180", "clahe", "hires", "up2x",
-          "erode5", "erode3", "fail")
+STAGES = ("s1", "s2", "det5", "erode5", "erode3", "clahe", "rot90", "hires", "up2x", "fail")
 
 # 벤치용 플래그: 침식/두줄 분리 단계를 끄고 gold 1,000장에서 효과를 분리 측정할 때 False 로 바꾼다
 USE_ERODE = True
@@ -45,7 +45,7 @@ DET_FILE: str | None = None   # None = rapidocr 동봉 det. 벤치에서 교체 
 
 _DET5_FILE = "ch_PP-OCRv5_det_mobile.onnx"   # 재시도용 v5 det: 도트 프린팅 검출이 v4보다 좋음 (09-08 벤치)
 
-# 재시도 단계(det5 부터: det5/rot90/rot270/rot180/clahe/hires/up2x/erode5/erode3, _split_rec 내부 포함)
+# 재시도 단계(det5 부터: det5/erode5/erode3/clahe/rot90/hires/up2x, _split_rec 내부 포함)
 # 에서 쓰는 파인튜닝 rec. 어려운 사진에서 base 보다 강함 (골드 1,000장: exact 892 -> 901, 09-12 벤치).
 # None 이면 기존처럼 s1/s2/재시도 모두 base 모델을 쓴다.
 RETRY_REC: str | None = "korean_PP-OCRv5_rec_ft_v2.onnx"
@@ -260,11 +260,15 @@ def _split_rec(items: list, retry: bool = False) -> list:
     return out
 
 
-def read_raw(path: str, retry_upscale: bool = False, stage_cap: str = "full") -> tuple[list, str]:
+def read_raw(path: str, retry_upscale: bool = False, stage_cap: str = "full",
+             deadline: float | None = None) -> tuple[list, str]:
     """([(text, box)], stage) 반환. stage 는 날짜 후보를 만들어낸 단계, 못 찾으면 'fail'.
 
     stage_cap: 시간 예산이 빠듯할 때 얼마나 깊이 시도할지 제한한다 (pipeline.set_budget 용).
-    "s1" = s1 조각만, "cheap" = s1/s2/det5 까지만 (회전·재시도 생략), "full" = 기존 동작 그대로."""
+    "s1" = s1 조각만, "cheap" = s1/s2/det5 까지만 (침식·회전·재시도 생략), "full" = 기존 동작 그대로.
+    deadline: time.monotonic() 기준 장당 상한. 단계 사이에서 넘어 있으면 그때까지 결과로 'fail' 종료
+    (앱처럼 한 장씩 처리할 때 최악 지연을 막는 용도. None 이면 기존 동작 그대로)."""
+    late = lambda: deadline is not None and time.monotonic() > deadline   # 단계 하나는 끝까지 돌고 사이에서만 본다
     img = _load(path)
     items = _crops(img)
     keep = lambda c: c.shape[0] >= 20 and c.shape[1] / c.shape[0] <= 12
@@ -279,6 +283,8 @@ def read_raw(path: str, retry_upscale: bool = False, stage_cap: str = "full") ->
     out = out + hybrid_rec(small)
     if _ok(out):
         return out, "s2"
+    if late():
+        return out, "fail"
 
     # v5 det 로 다시 검출: v4 가 놓치는 도트 프린팅, 저대비 글자
     # 여기서부터 재시도 단계 (det5 ~ erode3): RETRY_REC 파인튜닝 모델을 쓴다
@@ -286,42 +292,64 @@ def read_raw(path: str, retry_upscale: bool = False, stage_cap: str = "full") ->
     if _ok(d5):
         return d5, "det5"
     out += d5
-    if stage_cap == "cheap":
+    if stage_cap == "cheap" or late():
         return out, "fail"
 
-    for code, stage in ((cv2.ROTATE_90_CLOCKWISE, "rot90"),
-                        (cv2.ROTATE_90_COUNTERCLOCKWISE, "rot270"),
-                        (cv2.ROTATE_180, "rot180")):
-        rot = hybrid_rec(_crops(cv2.rotate(img, code)), retry=True)
-        if _ok(rot):
-            return rot, stage
-        out += rot
+    # 09-27 순서 재배치 (tools/bench_stage_cost.py, 재시도까지 간 골드 182장 전 단계 실측):
+    #   단계     중간값   날짜 낸 장수  정답  정밀도
+    #   erode5   1.2초    110         90    0.82   <- 가장 싸고 가장 많이 맞춤
+    #   erode3   1.9초    126        101    0.80
+    #   clahe    1.8초     95         72    0.76
+    #   det5     2.2초     75         58    0.77
+    #   rot90    1.3초     33         22    0.67
+    #   hires    3.4초     86         58    0.67   <- 비쌈
+    #   up2x     3.5초     76         48    0.63   <- 비쌈
+    #   rot270/rot180: 날짜 11건 냈으나 정답 0건 -> 제거 (오답으로 조기 종료만 시킴)
+    # 시뮬레이션: 기존 순서 정답 111/182, 평균 14.4초 -> 이 순서 120/182, 평균 9.2초 (반씩 나눠도 양쪽 +4, +5)
+    if retry_upscale and USE_ERODE:
+        # 도트 프린팅: 점 사이가 벌어져 det 가 글자로 못 봄. 침식으로 점을 키워 다시 검출
+        # 침식으로 날짜 줄과 시각 줄이 붙으면 _split_rec 이 흰 틈을 따라 나눠 읽는다
+        for k in (5, 3):
+            if late():
+                return out, "fail"
+            er = _split_rec(_crops(cv2.erode(img, np.ones((k, k), np.uint8)), loose=True), retry=True)
+            if _ok(er):
+                return er, f"erode{k}"
+            out += er
 
     if retry_upscale:
+        if late():
+            return out, "fail"
         # 금속면, 저대비 인쇄: 대비 강화만으로 잡히는 경우 (확대는 오히려 방해)
         cl = hybrid_rec(_crops(_clahe(img), loose=True), retry=True)
         if _ok(cl):
             return cl, "clahe"
         out += cl
-        # 원본 해상도(긴 변 1920) + 대비 강화: 골드 fail 103장 중 4장 회복 (09-11 bench_hires)
+
+    if late():
+        return out, "fail"
+    # 세로 사진이 EXIF 없이 90도 돌아간 채 저장된 경우
+    rot = hybrid_rec(_crops(cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)), retry=True)
+    if _ok(rot):
+        return rot, "rot90"
+    out += rot
+
+    if retry_upscale:
+        if late():
+            return out, "fail"
+        # 원본 해상도(긴 변 1920) + 대비 강화: 작은 글씨
         hi = hybrid_rec(_crops(_clahe(_load(path, 1920)), loose=True), retry=True)
         if _ok(hi):
             return hi, "hires"
         out += hi
+        if late():
+            return out, "fail"
         # 작은 글씨: 2배 확대
         up = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         big2x = hybrid_rec(_crops(up, loose=True), retry=True)
         if _ok(big2x):
             return big2x, "up2x"
         out += big2x
-        # 도트 프린팅: 점 사이가 벌어져 det 가 글자로 못 봄. 침식으로 점을 키워 다시 검출 (09-11 골드 fail 103장 중 31장 회복)
-        # 침식으로 날짜 줄과 시각 줄이 붙으면 _split_rec 이 흰 틈을 따라 나눠 읽는다
-        if USE_ERODE:
-            for k in (5, 3):
-                er = _split_rec(_crops(cv2.erode(img, np.ones((k, k), np.uint8)), loose=True), retry=True)
-                if _ok(er):
-                    return er, f"erode{k}"
-                out += er
 
     return out, "fail"
 

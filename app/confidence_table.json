@@ -1,19 +1,19 @@
 {
-  "global": 0.9002,
+  "global": 0.9092,
   "groups": {
-    "fail": 0.2,
+    "fail": 0.25,
     "first": 0.9598,
-    "none": 0.2083,
-    "retry": 0.7044
+    "none": 0.1852,
+    "retry": 0.7707
   },
   "buckets": {
     "first|full|kw|clear": 0.9697,
     "first|full|kw|contested": 0.9412,
     "first|full|nokw|clear": 0.962,
     "first|full|nokw|contested": 0.9423,
-    "none": 0.2083,
-    "retry|full|kw|clear": 0.7297,
-    "retry|full|nokw|clear": 0.732,
-    "retry|part|nokw|clear": 0.5882
+    "none": 0.1852,
+    "retry|full|kw|clear": 0.7429,
+    "retry|full|nokw|clear": 0.8081,
+    "retry|part|nokw|clear": 0.6471
   }
 }

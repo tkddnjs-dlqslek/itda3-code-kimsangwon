@@ -52,11 +52,15 @@ def list_images(input_dir: str) -> list[str]:
                   if f.lower().endswith(EXTS))
 
 
-def predict_one(path: str, strict: bool = True, retry_upscale: bool = False) -> dict:
+def predict_one(path: str, strict: bool = True, retry_upscale: bool = False,
+                max_seconds: float | None = None) -> dict:
+    """max_seconds: 이 한 장에 쓸 상한(초). 단계 사이에서 넘으면 그때까지 결과로 끝낸다.
+    None 이면 기존 동작(전체 예산 set_budget 만 적용). 노트북은 None, 앱은 값을 준다."""
     image_id = os.path.splitext(os.path.basename(path))[0]
     try:
         eff_retry, stage_cap = _decide_stage(retry_upscale)
-        items, stage = ocr.read_raw(path, eff_retry, stage_cap)
+        deadline = None if max_seconds is None else time.monotonic() + max_seconds
+        items, stage = ocr.read_raw(path, eff_retry, stage_cap, deadline)
         lines_geo = ocr.group_lines_geo(items)
         texts = [t for t, _, _ in lines_geo]
         geo = [(cy, h) for _, cy, h in lines_geo]

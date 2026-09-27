@@ -40,7 +40,7 @@ def test_remaining_count_never_goes_negative(monkeypatch):
 def test_predict_one_uses_budget_and_decrements_remaining(monkeypatch):
     calls = []
 
-    def fake_read_raw(path, retry, stage_cap):
+    def fake_read_raw(path, retry, stage_cap, deadline=None):
         calls.append((retry, stage_cap))
         return [], "s1"
 
@@ -71,3 +71,51 @@ def test_predict_one_exception_still_decrements_remaining(monkeypatch):
     row = pipeline.predict_one("fake.jpg", strict=False, retry_upscale=False)
     assert row["stage"] == "error" and row["final_date"] == "NONE"
     assert pipeline._budget["remaining"] == 0
+
+
+def test_read_raw_deadline_stops_between_stages(monkeypatch):
+    """장당 상한(deadline)이 지나 있으면 s2 뒤에서 멈추고, 그 뒤 단계(det5 이후)는 호출하지 않는다."""
+    import ocr
+
+    calls = []
+    monkeypatch.setattr(ocr, "_load", lambda path, side=960: "IMG")
+    monkeypatch.setattr(ocr, "_crops", lambda img, loose=False, v5=False: calls.append(("crops", v5)) or [])
+    monkeypatch.setattr(ocr, "hybrid_rec", lambda items, retry=False: [])
+    monkeypatch.setattr(ocr, "_ok", lambda items: False)
+    monkeypatch.setattr(ocr.time, "monotonic", lambda: 100.0)
+    items, stage = ocr.read_raw("x.jpg", retry_upscale=True, deadline=99.0)   # 이미 지난 상한
+    assert stage == "fail" and items == []
+    assert calls == [("crops", False)]                                          # det5 (v5=True) 미호출
+
+
+def test_read_raw_without_deadline_runs_all_stages(monkeypatch):
+    import ocr
+
+    calls = []
+    monkeypatch.setattr(ocr, "_load", lambda path, side=960: "IMG")
+    monkeypatch.setattr(ocr, "_crops", lambda img, loose=False, v5=False: calls.append(("crops", v5)) or [])
+    monkeypatch.setattr(ocr, "_clahe", lambda img: img)
+    monkeypatch.setattr(ocr, "_split_rec", lambda items, retry=False: [])
+    monkeypatch.setattr(ocr, "hybrid_rec", lambda items, retry=False: [])
+    monkeypatch.setattr(ocr, "_ok", lambda items: False)
+    monkeypatch.setattr(ocr.cv2, "rotate", lambda img, code: img)
+    monkeypatch.setattr(ocr.cv2, "resize", lambda img, dsize, fx=1, fy=1, interpolation=None: img)
+    monkeypatch.setattr(ocr.cv2, "erode", lambda img, k: img)
+    items, stage = ocr.read_raw("x.jpg", retry_upscale=True)
+    assert stage == "fail"
+    assert len(calls) == 8                                                      # s1, det5, erode 2, clahe, rot90, hires, up2x
+
+
+def test_predict_one_passes_deadline(monkeypatch):
+    seen = {}
+
+    def fake_read_raw(path, retry, cap, deadline=None):
+        seen["deadline"] = deadline
+        return [], "fail"
+
+    monkeypatch.setattr(pipeline.ocr, "read_raw", fake_read_raw)
+    monkeypatch.setattr(pipeline.time, "monotonic", lambda: 50.0)
+    pipeline.predict_one("a.jpg", strict=True, retry_upscale=True, max_seconds=8.0)
+    assert seen["deadline"] == 58.0
+    pipeline.predict_one("a.jpg", strict=True, retry_upscale=True)
+    assert seen["deadline"] is None
