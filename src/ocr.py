@@ -23,6 +23,8 @@ STAGES = ("s1", "s2", "det5", "erode5", "erode3", "clahe", "rot90", "hires", "up
 # 벤치용 플래그: 침식/두줄 분리 단계를 끄고 gold 1,000장에서 효과를 분리 측정할 때 False 로 바꾼다
 USE_ERODE = True
 SPLIT_LINES = True
+VOTE = True          # 세 인식기 투표 (09-28). 벤치에서 끄고 비교할 때 False
+PAD_VOTE = True      # 숫자 조각을 여백 있는 축 정렬 크롭으로 한 번 더 읽어 투표에 추가 (09-28)
 
 # 채점 서버는 repo 루트에서 노트북을 돌린다. cwd 가 아니라 이 파일 기준으로 찾는다.
 _WEIGHTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "weights")
@@ -99,10 +101,49 @@ def hybrid_rec(items: list, retry: bool = False) -> list:
     redo = [i for i, (t, _) in enumerate(res)
             if sum(c.isdigit() for c in t) >= 3 or dateparse.find_candidates(t)]
     if redo:
-        for i, (t, conf) in zip(redo, _rec("ch")([crops[i] for i in redo])[0]):
-            if _has_complete_date(t) or not _has_complete_date(res[i][0]):
-                res[i] = (t, conf)
+        sub = [crops[i] for i in redo]
+        ch = list(_rec("ch")(sub)[0])
+        # 09-28 세 인식기 투표: ko, ch 에 남은 한 모델(파인튜닝 또는 기본 ko)을 더해 완전 날짜가 둘 이상 같으면
+        # 그 날짜를 읽은 텍스트를 택한다. 한 모델이 숫자 한 자리를 자신 있게 틀리는 경우(07<->09, 25<->26)를 잡는다.
+        # 오답 65장 오라클: 세 모델 중 둘 이상이 정답을 읽은 사진 11장 (tools/bench_rec_oracle.py)
+        # 투표 대상: 날짜 후보가 보이는 조각만 (바코드, 전화번호 같은 긴 숫자열은 제외해 비용을 아낀다).
+        # 도커 500장: 모든 숫자 조각에 세 번째 모델까지 읽으면 663초 -> 887초. 날짜 조각만 읽어 비용을 줄인다 (09-28)
+        datey = [k for k, i in enumerate(redo)
+                 if dateparse.find_candidates(res[i][0]) or dateparse.find_candidates(ch[k][0])]
+        third = [None] * len(redo)
+        third_key = ("ko" if ko_key != "ko" else _retry_key()) if VOTE else None
+        if third_key and third_key != ko_key and datey:
+            for k, t in zip(datey, _rec(third_key)([sub[k] for k in datey])[0]):
+                third[k] = tuple(t)
+        # 여백 있는 축 정렬 크롭으로 한 번 더 (기본 모델 + ch). 원본이 없거나 잘리지 않으면 건너뜀
+        pads = [None] * len(redo)
+        if PAD_VOTE and _SRC["img"] is not None and datey:
+            pc = {k: _pad_crop(_SRC["img"], items[redo[k]][1]) for k in datey}
+            valid = [k for k in datey if pc[k] is not None]
+            if valid:
+                r1 = _rec(ko_key)([pc[k] for k in valid])[0]
+                r2 = _rec("ch")([pc[k] for k in valid])[0]
+                for k, a, b in zip(valid, r1, r2):
+                    pads[k] = [tuple(a), tuple(b)]
+        for k, i in enumerate(redo):
+            cands = [res[i], ch[k]] + ([third[k]] if third[k] else []) + (pads[k] or [])
+            dates = [_first_date(t) for t, _ in cands]
+            pick = None
+            best = max(((sum(1 for d in dates if d == dj), -j) for j, dj in enumerate(dates) if dj is not None), default=None)
+            if best is not None and best[0] >= 2:
+                pick = cands[-best[1]]
+            if pick is not None:
+                res[i] = pick
+            elif _has_complete_date(ch[k][0]) or not _has_complete_date(res[i][0]):
+                res[i] = ch[k]
     return [(t, box) for (t, conf), (_, box) in zip(res, items) if conf >= _MIN_CONF]
+
+
+def _first_date(text: str):
+    for c in dateparse.find_candidates(text):
+        if None not in (c.y, c.m, c.d):
+            return (c.y, c.m, c.d)
+    return None
 
 
 def _geom(box):
@@ -161,7 +202,24 @@ def group_lines(items: list) -> list[str]:
     return [t for t, _, _ in group_lines_geo(items)]
 
 
+_SRC = {"img": None}   # _crops 가 마지막으로 자른 원본. hybrid_rec 이 숫자 조각을 여백 있게 다시 자를 때 쓴다 (09-28)
+
+
+def _pad_crop(img, box, fx: float = 0.12, fy: float = 0.0):
+    """box(4점)의 축 정렬 외접 사각형을 가로 fx, 세로 fy 비율만큼 넓혀 잘라낸다. 도트 인쇄에서
+    투시 보정 크롭이 마지막 자리를 잘라 먹는 경우(2026.06.2 -> 25)의 대안 읽기용."""
+    b = np.asarray(box, dtype=float)
+    x0, y0, x1, y1 = b[:, 0].min(), b[:, 1].min(), b[:, 0].max(), b[:, 1].max()
+    w, h = x1 - x0, y1 - y0
+    x0, x1 = max(0, int(x0 - w * fx)), min(img.shape[1], int(x1 + w * fx))
+    y0, y1 = max(0, int(y0 - h * fy)), min(img.shape[0], int(y1 + h * fy))
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return None
+    return img[y0:y1, x0:x1]
+
+
 def _crops(img, loose: bool = False, v5: bool = False) -> list:
+    _SRC["img"] = img
     eng = _det(loose, v5)
     boxes, _ = eng.text_det(img)
     if boxes is None or len(boxes) < 1:

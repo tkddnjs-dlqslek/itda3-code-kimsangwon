@@ -1,0 +1,66 @@
+image_id,kind,stage,gold,n_hits,hits
+000018,wrong_all,s1,2026-04-24,13,ko/p0/raw=26.04.24 B; ft/p0/raw=26.04.24B; ko/p0/er3=26.04.24 B; ft/p0/er3=26.04.24B; ko/px/raw=26.04.24; ft/px/raw=26.04.24B; ko/px/er3=26.04.24B; ch/px/er3=26.04.24 日; ft/px/er3=26.04.24B; ko/pxy/raw=26.04.24B; ft/pxy/raw=26.04.24B; ko/pxy/er3=26.04.24 B; ft/pxy/er3=26.04.24B
+000023,wrong_day,s1,2025-10-11,0,
+000028,wrong_all,s1,2026-02-10,0,
+000032,wrong_year,det5,2026-03-22,0,
+000078,wrong_year,s1,2026-06-19,0,
+000088,wrong_all,s1,2026-09-03,0,
+000111,wrong_day,s1,2025-10-25,3,ft/px/er3=25.10.25 11:30F2.1; ko/pxy/er3=25.10.251:502.1; ft/pxy/er3=25.10.25 113021
+000178,wrong_day,s1,2026-06-26,0,
+000180,wrong_day,s1,2026-06-25,13,ft/p0/raw=2026.06.25; ko/p0/er3=2026.06.25; ch/p0/er3=2026.06.25; ft/p0/er3=2026.06.25; ft/px/raw=2026.06.25; ko/px/er3=2026.06.25; ch/px/er3=2026.06.25; ft/px/er3=2026.06.25; ko/pxy/raw=2026.06.25; ft/pxy/raw=2026.06.25; ko/pxy/er3=2026.06.25; ch/pxy/er3=2026.06.25; ft/pxy/er3=2026.06.25
+000190,wrong_all,det5,2026-11-22,0,
+000192,wrong_all,det5,2026-06-24,0,
+000212,wrong_year,s1,2026-12-16,0,
+000215,wrong_all,s2,2026-10-14,8,ko/p0/raw=2026:10.14; ch/p0/raw=2026.10. 14; ft/p0/raw=2026.10.14; ko/px/raw=2026.10.142; ch/px/raw=2026. 10. 14 2; ft/px/raw=2026.10.142; ch/pxy/raw=2026.10.142; ft/pxy/raw=2026.10.14
+000288,wrong_year,s1,2028-07-25,11,ko/p0/er3=2028.07.25; ch/p0/er3=2028.07.25; ft/p0/er3=2028.07.25; ft/px/raw=2028.07.252; ko/px/er3=2028.07-257; ch/px/er3=2028.07.252; ft/px/er3=2028.07.25까; ft/pxy/raw=2028.07.252; ko/pxy/er3=2028.07-257; ch/pxy/er3=2028.07.252; ft/pxy/er3=2028.07.25까
+000310,wrong_md,s1,2026-09-28,16,ch/p0/raw=2026.09.28; ft/p0/raw=2026.09.28; ko/p0/er3=2026.09.28; ch/p0/er3=2026.09.28; ft/p0/er3=2026.09.28; ko/px/raw=2026.09.28; ch/px/raw=2026.09.28; ft/px/raw=2026.09.28; ko/px/er3=2026.09.28; ch/px/er3=2026.09.28; ft/px/er3=2026.09.28; ch/pxy/raw=2026.09.28; ft/pxy/raw=2026.09.28; ko/pxy/er3=2
+000356,wrong_md,s1,2027-09-16,0,
+000360,wrong_day,erode3,2026-02-18,0,
+000368,wrong_year,det5,2026-09-22,0,
+000373,partial_wrong,s1,2026-09-18,0,
+000374,wrong_day,s1,2026-08-28,15,ko/p0/raw=2026.08.28; ft/p0/raw=2026.08.28; ko/p0/er3=2026.08.28; ch/p0/er3=2026.08.28; ft/p0/er3=2026.08.28; ko/px/raw=226.08.28; ft/px/raw=2026.08.28; ko/px/er3=2026.08.28; ch/px/er3=2026.08.28; ft/px/er3=2026.08.28; ko/pxy/raw=2026.08.28; ch/pxy/raw=226.08.28; ft/pxy/raw=2026.08.28; ko/pxy/er3=20
+000392,wrong_all,s1,2026-08-28,11,"ko/p0/raw=26.08.28; ft/p0/raw=26.08.28; ko/p0/er3=26,08.28; ft/p0/er3=26.08.28; ko/px/raw=26,08.28; ft/px/raw=26.08.28; ko/px/er3=26,08.28; ft/px/er3=26.08.28; ko/pxy/raw=26,08.28; ft/pxy/raw=26.08.28; ft/pxy/er3=26.08.28"
+000394,wrong_year,det5,2020-04-14,0,
+000406,wrong_all,s1,2026-08-27,0,
+000429,wrong_year,erode5,2026-01-04,0,
+000433,wrong_md,s1,2026-08-05,10,ft/p0/raw=2026.08.05; ft/p0/er3=2026.08.05; ko/px/raw=2026.08.05; ft/px/raw=2026.08.05; ft/px/er3=2026.08.05; ch/pxy/raw=2026.08.05; ft/pxy/raw=2026.08.05; ko/pxy/er3=2026.08.5; ch/pxy/er3=2026.08.5; ft/pxy/er3=2026.08.05
+000440,wrong_all,fail,2026-08-13,0,
+000441,wrong_day,s1,2025-12-15,0,
+000463,wrong_day,s1,2027-02-14,18,ko/p0/raw=2027.02.14; ch/p0/raw=2027.02. 14; ft/p0/raw=2027.02.14; ko/p0/er3=2027.02.14; ch/p0/er3=2027.02.14; ft/p0/er3=2027.02.14; ko/px/raw=2027.02.14; ch/px/raw=2027.02.14; ft/px/raw=2027.02.14; ko/px/er3=2027.02.14; ch/px/er3=2027.02.14; ft/px/er3=2027.02.14; ko/pxy/raw=2027.02.14; ch/pxy/raw=2
+000473,wrong_md,hires,2026-05-21,0,
+000474,wrong_day,erode5,2026-06-26,3,ch/p0/er3=26.06. 26 A; ch/px/er3=26.06.26 A; ch/pxy/er3=26.06. 26 A
+000475,wrong_all,det5,2026-07-30,0,
+000480,wrong_md,s1,2026-06-04,18,ko/p0/raw=2026.06.04; ch/p0/raw=2026.06.04; ft/p0/raw=2026.06.04; ko/p0/er3=2026.06.04; ch/p0/er3=2026.06.04; ft/p0/er3=2026.06.04; ko/px/raw=2026.06.04; ch/px/raw=2026.06.04; ft/px/raw=2026.06.04; ko/px/er3=2026.06.04; ch/px/er3=2026.06.04; ft/px/er3=2026.06.04; ko/pxy/raw=2026.06.04; ch/pxy/raw=20
+000494,wrong_md,det5,2025-12-12,0,
+000540,wrong_year,s1,2026-03-24,0,
+000544,wrong_day,erode5,2029-06-25,0,
+000582,wrong_md,s1,2025-11-21,13,ko/p0/er3=202511.21 까지 F1; ch/p0/er3=202511.21F1; ft/p0/er3=2025.11.21까지F1; ft/px/raw=202511.21까지F1; ko/px/er3=202511.21까자 F1; ch/px/er3=202511.21F1; ft/px/er3=2025.11.21까지 F1; ko/pxy/raw=2025.11.21까지 F1; ch/pxy/raw=202511.21F1; ft/pxy/raw=202511.21까지F1; ko/pxy/er3=202511.21까자F1; ch/pxy/er3=2025.11.
+000622,wrong_day,s1,2027-01-22,18,ko/p0/raw=2027.01.22/0 07:51; ch/p0/raw=2027.01.22/0 07:51; ft/p0/raw=2027.01.22/D 07:51; ko/p0/er3=2027.01.22/0 07:51; ch/p0/er3=2027.01.22; ft/p0/er3=2027.01.22/D 07:51; ko/px/raw=2027.01.22; ch/px/raw=2027.01.22; ft/px/raw=2027.01.22; ko/px/er3=2027.01.22; ch/px/er3=2027.01.22; ft/px/er3=2027.01.
+000627,wrong_all,erode5,2026-10-06,0,
+000642,wrong_all,det5,2026-09-01,0,
+000666,wrong_all,det5,2026-09-01,0,
+000722,wrong_day,det5,2026-08-04,0,
+000732,wrong_all,det5,2026-03-16,0,
+000736,wrong_year,s1,2026-12-17,17,ko/p0/raw=2026.12.17; ft/p0/raw=2026.12.17; ko/p0/er3=2026.12.17; ch/p0/er3=2026.12. 17; ft/p0/er3=2026.12.17; ko/px/raw=2026.12.17; ch/px/raw=2026.12.17; ft/px/raw=2026.12.17; ko/px/er3=2026.12.17; ch/px/er3=2026.12.17; ft/px/er3=2026.12.17; ko/pxy/raw=2026.12.17; ch/pxy/raw=2026.12.17; ft/pxy/raw=
+000753,wrong_day,erode5,2026-03-18,0,
+000764,wrong_all,erode3,2026-03-12,0,
+000766,wrong_all,s1,2026-09-24,0,
+000767,wrong_all,erode5,2026-03-12,0,
+000771,wrong_all,det5,2026-11-19,0,
+000784,wrong_year,det5,2027-05-22,5,ft/p0/raw=2027.05.22; ft/p0/er3=2027.05.22; ft/px/raw=22027.05.22; ft/px/er3=2027.05.227; ft/pxy/er3=2027.05.221
+000790,partial_wrong,s1,2027-07-NONE,0,
+000858,wrong_day,clahe,2021-10-28,1,ft/px/er3=2021/10/28
+000863,wrong_all,erode3,2021-10-22,0,
+000867,wrong_all,clahe,2021-10-23,0,
+000868,wrong_md,fail,2021-10-23,0,
+000873,wrong_md,s1,2021-02-26,5,ko/p0/raw=Best By FEB/26/21; ch/p0/raw=BestByFEB/26/21; ft/p0/raw=Best By FEB/26/21; ft/px/raw=Best By FEB/26/21 1; ch/pxy/raw=BestByFEB/26/21
+000883,wrong_year,det5,2021-07-03,4,ft/p0/raw=2021.07.03; ft/p0/er3=2021.07:.03; ft/px/raw=2021.07:.03; ft/px/er3=2021:.07.03
+000886,wrong_all,erode3,2021-07-09,0,
+000888,wrong_day,s1,2021-12-04,0,
+000915,wrong_day,s2,2021-07-21,1,ft/px/er3=202107.21
+000945,wrong_all,s1,2021-07-03,0,
+000958,wrong_day,erode3,2021-02-22,0,
+000965,wrong_all,s1,2021-07-23,5,ch/p0/raw=23.07.2021; ft/p0/raw=23.07.2021; ch/px/raw=23.07.2021; ft/px/raw=23.07.2021; ft/pxy/raw=23.07.2021
+000978,partial_wrong,up2x,2021-11-03,0,
+000989,wrong_all,det5,2021-07-20,0,
+000992,wrong_md,det5,2021-03-04,0,

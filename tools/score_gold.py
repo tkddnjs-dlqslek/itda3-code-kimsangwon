@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from pipeline import list_images, predict_one
 OUT = sys.argv[1] if len(sys.argv) > 1 else "labels/auto_gold_reorder.csv"
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ids = {l.strip() for l in open("labels/gold_ids.txt", encoding="utf-8") if l.strip()}
+ids = {l.strip() for l in open(os.environ.get("ITDA_IDS", "labels/gold_ids.txt"), encoding="utf-8") if l.strip()}
 paths = [p for p in list_images("../images") if os.path.splitext(os.path.basename(p))[0] in ids]
 done = set()
 if os.path.exists(OUT):

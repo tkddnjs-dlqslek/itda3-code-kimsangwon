@@ -1,19 +1,19 @@
 {
-  "global": 0.9092,
+  "global": 0.9182,
   "groups": {
     "fail": 0.25,
-    "first": 0.9598,
+    "first": 0.9647,
     "none": 0.1852,
-    "retry": 0.7707
+    "retry": 0.8013
   },
   "buckets": {
-    "first|full|kw|clear": 0.9697,
-    "first|full|kw|contested": 0.9412,
-    "first|full|nokw|clear": 0.962,
-    "first|full|nokw|contested": 0.9423,
+    "first|full|kw|clear": 0.9819,
+    "first|full|kw|contested": 0.9565,
+    "first|full|nokw|clear": 0.9568,
+    "first|full|nokw|contested": 0.9355,
     "none": 0.1852,
-    "retry|full|kw|clear": 0.7429,
-    "retry|full|nokw|clear": 0.8081,
+    "retry|full|kw|clear": 0.8305,
+    "retry|full|nokw|clear": 0.8133,
     "retry|part|nokw|clear": 0.6471
   }
 }

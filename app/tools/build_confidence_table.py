@@ -3,7 +3,7 @@
 
     python app/tools/build_confidence_table.py
 
-OCR 을 다시 돌리지 않는다. labels/auto_gold_reorder.csv (채택 구성의 골드 예측)에 저장된
+OCR 을 다시 돌리지 않는다. labels/auto_gold_padvote2.csv (채택 구성의 골드 예측)에 저장된
 texts 와 stage 로 조건을 다시 계산한다.
 """
 import csv
@@ -26,7 +26,7 @@ def load_rows():
     """[(image_id, bucket_key, 정답여부)] 1,000건."""
     gold = {r["image_id"]: r for r in _read("gold.csv")}
     out = []
-    for r in _read("auto_gold_reorder.csv"):
+    for r in _read("auto_gold_padvote2.csv"):
         g = gold.get(r["image_id"])
         if g is None:
             continue

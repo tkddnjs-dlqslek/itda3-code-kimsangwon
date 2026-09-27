@@ -73,4 +73,4 @@ def test_tool_replays_gold_predictions():
     import build_confidence_table as tool
     rows = tool.load_rows()
     assert len(rows) == 1000
-    assert sum(ok for _, _, ok in rows) == 910
+    assert sum(ok for _, _, ok in rows) == 919
