@@ -103,7 +103,15 @@ _TR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1"})
 _NUMISH = re.compile(r"[0-9OoIl|]{2,}")
 
 
+# 월 이름의 숫자 오독 (09-28): FE8/26/21 -> FEB, 0CT -> OCT, N0V -> NOV, 5EP -> SEP, AU6 -> AUG
+_MON_FIX = [(re.compile(r"\bFE8\b", re.I), "FEB"), (re.compile(r"\b0CT\b", re.I), "OCT"),
+            (re.compile(r"\bN0V\b", re.I), "NOV"), (re.compile(r"\b5EP\b", re.I), "SEP"),
+            (re.compile(r"\bAU6\b", re.I), "AUG")]
+
+
 def _norm(text: str) -> str:
+    for rx, mon in _MON_FIX:
+        text = rx.sub(mon, text)
     return _NUMISH.sub(lambda m: m.group(0).translate(_TR) if any(c.isdigit() for c in m.group(0)) else m.group(0), text)
 
 
@@ -204,6 +212,15 @@ def _year(tok: str, last: bool = False) -> int | None:
     return y if 2015 <= y <= 2040 else None
 
 
+def _year_fix8(tok: str) -> int | None:
+    """완전 날짜(연.월.일)의 4자리 연도가 범위 밖이고 두 번째 자리가 8 이면 0 오독으로 보고 복구
+    (2821.7.03 -> 2021). 09-28. 월/년만 있는 패턴에는 쓰지 않는다 (잡음 '2 2826' 이 날짜가 되는 것을 막음)."""
+    y = _year(tok)
+    if y is None and len(tok) == 4 and tok[0] == "2" and tok[1] == "8":
+        return _year("20" + tok[2:])
+    return y
+
+
 def _complete(y, m, d):
     """달력상 실재하는 날짜만 통과."""
     if y is None or m is None or d is None:
@@ -216,8 +233,12 @@ def _complete(y, m, d):
 
 
 def _parse(kind: str, g: tuple) -> tuple | None:
+    if kind == "ymd2k_slash":
+        # 09-28: 2자리 삼중이 슬래시로만 나뉘면 수입품 DD/MM/YY 로 먼저 본다 (30/07/26, 20/07/21).
+        # 국내 라벨은 점이나 하이픈을 쓰므로 슬래시 3칸은 수입 표기일 가능성이 높다. 달력에 없으면 YY/MM/DD
+        return _complete(_year(g[2], last=True), int(g[1]), int(g[0])) or _complete(_year(g[0]), int(g[1]), int(g[2]))
     if kind in ("ymd", "ymd2k"):
-        return _complete(_year(g[0]), int(g[1]), int(g[2]))
+        return _complete(_year_fix8(g[0]), int(g[1]), int(g[2]))
     if kind == "ymd_sp":
         return _complete(_year(g[0].replace(" ", "")), int(g[1].replace(" ", "")), int(g[2].replace(" ", "")))
     if kind == "dmy":
@@ -351,7 +372,10 @@ def find_candidates(text: str, neighbor_kw: bool = False) -> list[Candidate]:
                 day_guard = _DAY_PREFIX_TIGHT if has_punct_sep else _DAY_PREFIX_LOOSE
                 if day_guard.search(norm[:s]):
                     continue   # 앞에 day 로 보이는 숫자가 붙은 일-월-년 완전 날짜의 꼬리
-            parsed = _parse(kind, m.groups())
+            pkind = kind
+            if kind == "ymd2k" and all(_sep_kind(x) == "/" for x in _INNER_SEPS.findall(m.group(0))):
+                pkind = "ymd2k_slash"          # 슬래시만으로 나뉜 2자리 삼중: 일/월/년 우선 (_parse 참고)
+            parsed = _parse(pkind, m.groups())
             repaired = False
             if parsed is None and has_expiry:
                 parsed = _repair(kind, m.groups())

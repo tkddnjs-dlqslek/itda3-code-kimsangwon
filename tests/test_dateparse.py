@@ -298,3 +298,25 @@ def test_packing_date_dropped():
     assert extract_date(["포장일자 2026.05.29", "소비기한 2026.08.01"]) == ("2026", "08", "01")
     # 만료 키워드가 같은 줄에 있으면 유지
     assert extract_date(["포장일 2026.05.29 까지"]) == ("2026", "05", "29")
+
+
+# --- 09-28 규칙 3종: 슬래시 2자리 삼중, 연도 8->0 복구, 월 이름 오독 --------------------------
+
+def test_slash_two_digit_triple_prefers_day_month_year():
+    assert extract_date(["30/07/26B19"]) == ("2026", "07", "30")          # 골드 000475
+    assert extract_date(["20/07/21 DA MONTARE"]) == ("2021", "07", "20")  # 골드 000989
+    assert extract_date(["25/12/10"]) == ("2025", "12", "10")             # 일/월/년이 달력에 없으면(2010) 연/월/일로
+
+
+def test_dot_two_digit_triple_stays_korean_order():
+    assert extract_date(["26.06.25 A"]) == ("2026", "06", "25")
+
+
+def test_year_second_digit_8_recovered_only_in_full_dates():
+    assert extract_date(["유통기한 2821.7.03 까지"]) == ("2021", "07", "03")   # 골드 000883
+    assert extract_date(["BBE:NIY 2 2826 BEE"]) is None                       # 월/년 패턴에는 적용 안 함 (골드 000817 NONE)
+
+
+def test_month_name_digit_confusion_normalized():
+    assert extract_date(["BestBy FE8/26/21 10:48NDL.2A"]) == ("2021", "02", "26")   # 골드 000873
+    assert extract_date(["PROD 0CT 12 2025"]) == ("2025", "10", "12")
