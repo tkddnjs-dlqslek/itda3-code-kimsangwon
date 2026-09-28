@@ -22,10 +22,11 @@ CREATE TABLE IF NOT EXISTS items (
   stage TEXT NOT NULL DEFAULT '',
   evidence TEXT NOT NULL DEFAULT '[]',
   mode TEXT NOT NULL DEFAULT 'scan',
-  seconds REAL
+  seconds REAL,
+  second_shot INTEGER NOT NULL DEFAULT 0
 )"""
 CSV_COLS = ["id", "created_at", "barcode", "product_name", "final_date", "confidence",
-            "needs_review", "edited", "stage", "mode", "seconds"]
+            "needs_review", "edited", "second_shot", "stage", "mode", "seconds"]
 
 
 def connect(path: str) -> sqlite3.Connection:
@@ -50,12 +51,13 @@ def status_of(final_date: str, today: datetime.date, imminent_days: int = 3):
 def add_item(conn, item: dict) -> int:
     cur = conn.execute(
         "INSERT INTO items (created_at, barcode, product_name, year, month, day, final_date, confidence,"
-        " needs_review, edited, stage, evidence, mode, seconds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " needs_review, edited, stage, evidence, mode, seconds, second_shot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (datetime.datetime.now().isoformat(timespec="seconds"), item.get("barcode", ""),
          item.get("product_name", ""), item["year"], item["month"], item["day"],
          final_date_of(item["year"], item["month"], item["day"]), item.get("confidence"),
          int(bool(item.get("needs_review"))), int(bool(item.get("edited"))), item.get("stage", ""),
-         json.dumps(item.get("evidence", []), ensure_ascii=False), item.get("mode", "scan"), item.get("seconds")))
+         json.dumps(item.get("evidence", []), ensure_ascii=False), item.get("mode", "scan"), item.get("seconds"),
+         int(bool(item.get("second_shot")))))
     conn.commit()
     return cur.lastrowid
 
@@ -64,7 +66,7 @@ def list_items(conn, today: datetime.date) -> list[dict]:
     out = []
     for r in conn.execute("SELECT * FROM items"):
         d = dict(r)
-        d["needs_review"], d["edited"] = bool(d["needs_review"]), bool(d["edited"])
+        d["needs_review"], d["edited"], d["second_shot"] = bool(d["needs_review"]), bool(d["edited"]), bool(d["second_shot"])
         d["evidence"] = json.loads(d["evidence"])
         d["days_left"], d["status"] = status_of(d["final_date"], today)
         out.append(d)
@@ -74,11 +76,12 @@ def list_items(conn, today: datetime.date) -> list[dict]:
 def stats(conn) -> dict:
     modes = {m: {"n": n, "avg_seconds": round(avg, 2)} for m, n, avg in conn.execute(
         "SELECT mode, COUNT(*), AVG(seconds) FROM items WHERE seconds IS NOT NULL GROUP BY mode")}
-    review, edit = conn.execute(
-        "SELECT AVG(needs_review), AVG(edited) FROM items WHERE mode = 'scan'").fetchone()
+    review, edit, second = conn.execute(
+        "SELECT AVG(needs_review), AVG(edited), AVG(second_shot) FROM items WHERE mode = 'scan'").fetchone()
     return {"modes": modes,
             "review_rate": None if review is None else round(review, 4),
-            "edit_rate": None if edit is None else round(edit, 4)}
+            "edit_rate": None if edit is None else round(edit, 4),
+            "second_shot_rate": None if second is None else round(second, 4)}
 
 
 def to_csv(conn) -> str:

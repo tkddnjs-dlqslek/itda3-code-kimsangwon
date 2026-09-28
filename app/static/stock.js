@@ -19,6 +19,7 @@ async function load() {
       manual ? `수기 ${manual.n}건, 건당 평균 ${manual.avg_seconds}초` : "수기 기록 없음",
       scan && manual && manual.avg_seconds > 0 ? `건당 ${(manual.avg_seconds - scan.avg_seconds).toFixed(1)}초 단축 (${Math.round((1 - scan.avg_seconds / manual.avg_seconds) * 100)}%)` : "",
       stats.review_rate === null ? "" : `사람 확인이 필요했던 비율 ${Math.round(stats.review_rate * 100)}%, 실제로 고친 비율 ${Math.round(stats.edit_rate * 100)}%`,
+      stats.second_shot_rate === null || stats.second_shot_rate === undefined ? "" : `날짜 면을 다시 대야 했던 비율(2차 촬영) ${Math.round(stats.second_shot_rate * 100)}%`,
     ].filter(Boolean);
     document.getElementById("stats").replaceChildren(...lines.map((t) => Object.assign(document.createElement("div"), { textContent: t })));
   } catch (e) {

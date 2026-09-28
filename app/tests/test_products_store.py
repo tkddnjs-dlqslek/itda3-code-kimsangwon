@@ -66,11 +66,22 @@ def test_stats_compare_scan_and_manual():
     store.add_item(conn, _item(mode="manual", seconds=20.0, confidence=None))
     s = store.stats(conn)
     assert s["modes"] == {"scan": {"n": 2, "avg_seconds": 5.0}, "manual": {"n": 1, "avg_seconds": 20.0}}
-    assert s["review_rate"] == 0.5 and s["edit_rate"] == 0.5
+    assert s["review_rate"] == 0.5 and s["edit_rate"] == 0.5 and s["second_shot_rate"] == 0.0
 
 
 def test_stats_on_empty_db():
-    assert store.stats(store.connect(":memory:")) == {"modes": {}, "review_rate": None, "edit_rate": None}
+    assert store.stats(store.connect(":memory:")) == {"modes": {}, "review_rate": None, "edit_rate": None,
+                                                     "second_shot_rate": None}
+
+
+def test_second_shot_is_stored_and_counted():
+    conn = store.connect(":memory:")
+    store.add_item(conn, _item(second_shot=True))
+    store.add_item(conn, _item())
+    rows = store.list_items(conn, TODAY)
+    assert [r["second_shot"] for r in rows] == [True, False]
+    assert store.stats(conn)["second_shot_rate"] == 0.5
+    assert "second_shot" in store.to_csv(conn).splitlines()[0]
 
 
 def test_csv_has_header_and_rows():

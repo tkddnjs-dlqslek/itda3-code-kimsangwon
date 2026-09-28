@@ -14,7 +14,7 @@ STUB = {"image_id": "frame", "year": "2026", "month": "09", "day": "25", "final_
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "run_ocr", lambda path: dict(STUB))
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": dict(STUB))
     return TestClient(server.create_app(str(tmp_path / "items.db")))
 
 
@@ -31,6 +31,20 @@ def test_scan_returns_date_confidence_and_product(client):
     assert body["elapsed_ms"] >= 0
 
 
+def test_scan_first_shot_uses_cheap_mode(client, monkeypatch):
+    seen = {}
+
+    def fake(path, mode="full"):
+        seen["mode"] = mode
+        return dict(STUB, year="NONE", month="NONE", day="NONE", final_date="NONE", stage="fail", texts=[])
+
+    monkeypatch.setattr(server, "run_ocr", fake)
+    r = client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")}, data={"shot": "first"})
+    assert seen["mode"] == "cheap" and r.json()["final_date"] == "NONE" and r.json()["shot"] == "first"
+    client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")}, data={"shot": "second"})
+    assert seen["mode"] == "full"
+
+
 def test_scan_without_barcode_has_no_product(client):
     r = client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")})
     assert r.json()["product"] is None
@@ -38,7 +52,7 @@ def test_scan_without_barcode_has_no_product(client):
 
 def test_scan_removes_temp_file(client, monkeypatch):
     seen = {}
-    monkeypatch.setattr(server, "run_ocr", lambda path: seen.setdefault("path", path) and dict(STUB))
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": seen.setdefault("path", path) and dict(STUB))
     client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")})
     assert not os.path.exists(seen["path"])
 
