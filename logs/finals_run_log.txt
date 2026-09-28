@@ -1,0 +1,52 @@
+===== ITDA 본선 검수 재현 로그 =====
+date: 2026-09-28T06:54:09Z (UTC)
+host: "Ubuntu 22.04.5 LTS", 16 cores, 7GB RAM
+python3.10: Python 3.10.12
+repo commit: 4ca5b277183e394256bfb1c79d6b7f96da67913c
+
+$ python3.10 -m venv .venv && source .venv/bin/activate
+venv python: Python 3.10.12
+
+$ pip install -r requirements.txt
+  Downloading asttokens-3.0.2-py3-none-any.whl (28 kB)
+Collecting executing>=1.2.0
+  Downloading executing-2.2.1-py2.py3-none-any.whl (28 kB)
+Installing collected packages: pytz, pure-eval, ptyprocess, opencv-python, mpmath, flatbuffers, webencodings, wcwidth, tzdata, typing-extensions, traitlets, tornado, tomli, sympy, soupsieve, six, rpds-py, pyzmq, PyYAML, pygments, pyclipper, psutil, protobuf, pluggy, platformdirs, Pillow, pexpect, parso, pandocfilters, packaging, numpy, nest-asyncio, markupsafe, jupyterlab-pygments, iniconfig, humanfriendly, fastjsonschema, executing, defusedxml, decorator, debugpy, comm, attrs, asttokens, tinycss2, stack_data, Shapely, referencing, python-dateutil, prompt_toolkit, opencv-python-headless, mistune, matplotlib-inline, jupyter-core, jinja2, jedi, exceptiongroup, coloredlogs, bleach, beautifulsoup4, pytest, pandas, onnxruntime, jupyter-client, jsonschema-specifications, ipython, rapidocr-onnxruntime, jsonschema, ipykernel, nbformat, nbclient, nbconvert
+Successfully installed Pillow-10.3.0 PyYAML-6.0.3 Shapely-2.1.2 asttokens-3.0.2 attrs-26.1.0 beautifulsoup4-4.15.0 bleach-6.4.0 coloredlogs-15.0.1 comm-0.2.3 debugpy-1.8.22 decorator-5.3.1 defusedxml-0.7.1 exceptiongroup-1.3.1 executing-2.2.1 fastjsonschema-2.22.2 flatbuffers-25.12.19 humanfriendly-10.0 iniconfig-2.3.0 ipykernel-6.29.4 ipython-8.39.0 jedi-0.20.0 jinja2-3.1.6 jsonschema-4.26.0 jsonschema-specifications-2025.9.1 jupyter-client-8.10.0 jupyter-core-5.9.1 jupyterlab-pygments-0.3.0 markupsafe-3.0.3 matplotlib-inline-0.2.2 mistune-3.3.4 mpmath-1.3.0 nbclient-0.11.0 nbconvert-7.16.4 nbformat-5.11.1 nest-asyncio-1.6.0 numpy-1.26.4 onnxruntime-1.18.1 opencv-python-4.11.0.86 opencv-python-headless-4.9.0.80 packaging-26.3 pandas-2.2.2 pandocfilters-1.5.1 parso-0.8.7 pexpect-4.9.0 platformdirs-4.12.1 pluggy-1.6.0 prompt_toolkit-3.0.53 protobuf-7.36.2 psutil-7.2.2 ptyprocess-0.7.0 pure-eval-0.2.4 pyclipper-1.4.0 pygments-2.21.0 pytest-8.3.2 python-dateutil-2.9.0.post0 pytz-2026.4 pyzmq-27.2.0 rapidocr-onnxruntime-1.3.24 referencing-0.37.0 rpds-py-0.30.0 six-1.17.0 soupsieve-2.10 stack_data-0.6.3 sympy-1.14.0 tinycss2-1.5.1 tomli-2.4.1 tornado-6.5.10 traitlets-5.16.1 typing-extensions-4.16.0 tzdata-2026.4 wcwidth-0.9.1 webencodings-0.6.1
+pip install: 268s
+
+$ bash download_weights.sh
+total 41496
+drwxrwxr-x  2 root root     4096 Sep 28 06:59 .
+drwxr-xr-x 12 root root     4096 Sep 28 06:54 ..
+-rw-rw-r--  1 root root        0 Sep 28 06:34 .gitkeep
+-rw-r--r--  1 root root 10690752 Sep 28 06:58 ch_PP-OCRv3_rec_infer.onnx
+-rw-r--r--  1 root root  4819576 Sep 28 06:58 ch_PP-OCRv5_det_mobile.onnx
+-rw-r--r--  1 root root 13472847 Sep 28 06:59 korean_PP-OCRv5_rec_ft_v2.onnx
+-rw-r--r--  1 root root 13488748 Sep 28 06:59 korean_PP-OCRv5_rec_mobile.onnx
+download_weights: 32s
+  0 .gitkeep
+  10690752 ch_PP-OCRv3_rec_infer.onnx
+  4819576 ch_PP-OCRv5_det_mobile.onnx
+  13472847 korean_PP-OCRv5_rec_ft_v2.onnx
+  13488748 korean_PP-OCRv5_rec_mobile.onnx
+
+$ ITDA_INPUT_DIR=./sample ITDA_OUTPUT_PATH=/tmp/out.csv jupyter nbconvert --to notebook --execute predict.ipynb --output /tmp/executed.ipynb
+[NbConvertApp] Converting notebook predict.ipynb to notebook
+[NbConvertApp] Writing 66691 bytes to /tmp/executed.ipynb
+nbconvert exit: 0, 28s
+
+$ cat /tmp/out.csv
+image_id,year,month,day,final_date
+000001,2027,06,26,2027-06-26
+000575,NONE,10,14,NONE-10-14
+000586,2026,03,14,2026-03-14
+000859,NONE,NONE,NONE,NONE
+000904,2021,08,31,2021-08-31
+000925,NONE,02,02,NONE-02-02
+000931,2021,07,29,2021-07-29
+000980,2021,06,14,2021-06-14
+000988,2021,12,28,2021-12-28
+
+===== 끝 =====
+FINALS_DONE

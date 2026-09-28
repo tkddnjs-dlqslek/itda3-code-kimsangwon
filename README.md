@@ -117,6 +117,21 @@ jupyter nbconvert --to notebook --execute predict.ipynb \
 `app/` 에 카메라 자동 촬영, 바코드 인식, 신뢰도 기반 확인과 기한 순 재고 목록을 묶은 시연용 웹 앱이
 있습니다. `predict.ipynb` 와 `requirements.txt` 는 이 앱과 무관하며, 실행 방법은 `app/README.md` 에 있습니다.
 
+## 6-3. 본선 검수 재현 로그
+
+`logs/finals_run_log.txt` 는 순정 `ubuntu:22.04` 컨테이너(`docker run --cpus 4 --memory 8g`, apt 로 python3.10 만 설치)에서
+이 저장소의 커밋 4ca5b27 을 풀어 놓고 본선 안내 명령을 순서대로 실행한 기록입니다.
+
+```bash
+python3.10 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt          # 268초
+bash download_weights.sh                 # 32초, 가중치 4개
+ITDA_INPUT_DIR=./sample ITDA_OUTPUT_PATH=/tmp/out.csv   jupyter nbconvert --to notebook --execute predict.ipynb --output /tmp/executed.ipynb   # 28초, 종료 코드 0
+```
+
+`sample/` 9장의 출력은 `sample/README.md` 의 기대값과 전부 일치합니다. 로그의 `16 cores` 는 컨테이너가 보는 호스트
+코어 수이고 실제 CPU 할당은 `--cpus 4` 입니다. 코드가 바뀌면 로그도 다시 만듭니다.
+
 ## 7. 테스트
 
 ```bash
