@@ -25,7 +25,7 @@ def months_between(a: datetime.date, b: datetime.date) -> int:
 def verdict(year: str, month: str, day: str, today: datetime.date, min_months: int, needs_review: bool) -> dict:
     if year == "NONE" or month == "NONE":
         return {"verdict": "review", "months_left": None, "deadline": None,
-                "reason": "소비기한을 읽지 못했습니다. 표시 부분을 다시 찍어 주세요"}
+                "reason": "소비기한을 읽지 못했습니다. 표시 부분을 다시 찍어 올려 주십시오"}
     try:
         deadline = datetime.date(int(year), int(month), 1 if day == "NONE" else int(day))
     except ValueError:
@@ -39,4 +39,4 @@ def verdict(year: str, month: str, day: str, today: datetime.date, min_months: i
         return {**out, "verdict": "block", "reason": "소비기한이 지났습니다"}
     if left < min_months:
         return {**out, "verdict": "block", "reason": f"소비기한이 {left}개월 남아 기준 {min_months}개월에 미달합니다"}
-    return {**out, "verdict": "allow", "reason": f"소비기한 {left}개월 남음, 등록 가능"}
+    return {**out, "verdict": "allow", "reason": f"소비기한이 {left}개월 남았습니다. 등록 가능합니다"}
