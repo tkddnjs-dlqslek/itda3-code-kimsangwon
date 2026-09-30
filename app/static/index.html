@@ -9,17 +9,22 @@
 <body>
   <header>
     <h1>소비기한 입고 검수</h1>
-    <nav><a href="/">촬영</a><a href="stock.html">재고 목록</a></nav>
+    <nav><a href="/">스캔</a><a href="stock.html">재고와 할인 대상</a></nav>
   </header>
   <main>
     <section>
-      <video id="video" playsinline muted></video>
+      <button class="primary big" id="start">스캔 시작</button>
+      <div class="chips"><span class="chip" id="chipBarcode">바코드</span><span class="chip" id="chipDate">소비기한</span></div>
+      <div class="camwrap"><video id="video" playsinline muted></video><div class="flash" id="flash" hidden></div></div>
       <div class="bar">
-        <span class="phase" id="phase">카메라 준비 중</span>
-        <button id="shoot">지금 촬영</button>
+        <span class="phase" id="phase">스캔 시작을 눌러 주세요</span>
+      </div>
+      <div class="bar">
+        <button id="shoot">지금 판독</button>
+        <button id="confirm">확인 화면 열기</button>
         <button id="rebase">배경 다시 잡기</button>
       </div>
-      <p class="msg" id="msg">바코드 스캐너로 찍으면 바로 촬영합니다. 스캐너가 없으면 상품 뒷면을 카메라 앞에 대고 잠시 멈추면 자동으로 촬영합니다.</p>
+      <p class="msg" id="msg">상품을 카메라 앞에서 천천히 돌리면 바코드와 소비기한을 찾아 삑 소리와 함께 저장합니다. 의약품 2D 바코드는 유효기한까지 바코드에서 읽습니다.</p>
       <canvas id="small" width="64" height="48" hidden></canvas>
       <canvas id="full" hidden></canvas>
     </section>

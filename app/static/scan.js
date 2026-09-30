@@ -1,146 +1,222 @@
 import { DEFAULTS, initial, step, toGray, meanAbsDiff } from "./motion.js";
+import { parseGS1, productKey } from "./gs1.js";
+
+// 연속 스캔 (09-30): 검수원이 상품을 카메라 앞에서 돌리는 동안
+//   바코드는 브라우저가 0.5초마다 찾고 (GS1 2D 바코드에 유효기한이 있으면 그걸로 끝),
+//   소비기한은 1.2초마다 서버 싼 모드(1단계, 2단계, 검출기 교체)로 판독한다.
+// 둘 다 잡히고 신뢰도가 기준 이상이면 완료음과 함께 자동 저장, 낮으면 그때만 확인 화면을 연다.
+// 싼 모드로 3번 못 읽으면 전체 재시도 1번, 그래도 없으면 확인 화면에서 직접 입력.
 
 const $ = (id) => document.getElementById(id);
-const PHASE = { empty: "대기 중: 상품을 대 주세요", present: "상품 감지: 잠시 멈춰 주세요", captured: "촬영 완료: 상품을 치워 주세요" };
 const video = $("video"), small = $("small"), full = $("full");
 const sctx = small.getContext("2d", { willReadFrequently: true });
 const reader = new ZXingBrowser.BrowserMultiFormatReader();
+const OCR_EVERY_MS = 1200, CHEAP_TRIES = 3;
 
-let state = initial();
-let prev = null, base = null;   // 직전 프레임, 빈 배경 (흑백 64x48)
-let busy = false;               // 판독 중이거나 확인 화면이 열려 있으면 새로 찍지 않는다
-let presentAt = 0;              // 상품이 화면에 들어온 시각 (자동 촬영의 ROI 시작점)
-let capturedAt = 0;             // 촬영 시각. 저장까지 걸린 시간을 잰다 (ROI 실측)
-let ocr = null;                 // 서버 판독값. 사람이 고쳤는지 비교하는 기준
-let scanBarcode = "";           // 바코드 스캐너(키보드 입력 장치)가 넣어 준 번호. 카메라 판독보다 우선
-let pendingSecond = false;      // 1차 촬영에 날짜가 없어 날짜 면 재촬영을 기다리는 중
-let lastShot = "full";          // 마지막 촬영 종류: first / second / full
+let state = initial(), prev = null, base = null;
+let formOpen = false, inflight = false, cooldown = false, ticks = 0;
+let cur = null;                      // 지금 들고 있는 상품
+let lastSaved = "";                  // 방금 저장한 바코드 (치우기 전 같은 상품 중복 저장 방지)
+let audio = null;
+
+const newItem = () => ({ barcode: "", productName: "", date: null, source: "", ocr: null,
+  tries: 0, fullTried: false, failed: false, startedAt: performance.now(), lastOcr: 0 });
+
+function beep() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = 1760; g.gain.value = 0.15;
+    o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.12);
+  } catch (e) { /* 소리 없이 진행 */ }
+  if (navigator.vibrate) navigator.vibrate(80);
+}
 
 async function start() {
+  $("start").hidden = true;
+  beep();                             // 휴대폰은 사용자 동작 뒤에만 소리를 허용한다
   try {
     video.srcObject = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     await video.play();
-    setInterval(tick, 200);
+    setInterval(tick, 250);
+    $("phase").textContent = "상품을 카메라 앞에서 돌려 주세요";
   } catch (e) {
     $("phase").textContent = "카메라를 열 수 없습니다";
-    $("msg").textContent = e.message;
+    $("msg").textContent = `${e.message}. 휴대폰은 https 주소로 접속해야 카메라가 열립니다.`;
+    $("start").hidden = false;
+  }
+}
+
+function grabFull() {
+  full.width = video.videoWidth; full.height = video.videoHeight;
+  full.getContext("2d").drawImage(video, 0, 0);
+}
+
+function readBarcodeText() {
+  try { grabFull(); return reader.decodeFromCanvas(full).getText(); } catch (e) { return ""; }
+}
+
+async function setBarcode(text) {
+  const key = productKey(text);
+  if (!key) return;
+  cur.barcode = key;
+  const g = parseGS1(text);
+  if (g && g.expiry) { cur.date = g.expiry; cur.source = "barcode"; }   // 의약품 2D 바코드: 유효기한을 바코드에서
+  try {
+    const res = await fetch(`/api/product/${encodeURIComponent(key)}`);
+    if (res.ok) cur && cur.barcode === key && (cur.productName = (await res.json()).name);
+  } catch (e) { /* 상품명 없이 진행 */ }
+  render();
+}
+
+async function ocrFrame(shot) {
+  if (inflight || !cur) return;
+  inflight = true;
+  const item = cur;
+  item.lastOcr = performance.now();
+  if (!shot) shot = item.tries >= CHEAP_TRIES && !item.fullTried ? "second" : "first";
+  if (shot !== "first") item.fullTried = true;
+  try {
+    grabFull();
+    const blob = await new Promise((resolve) => full.toBlob(resolve, "image/jpeg", 0.9));
+    if (!blob) throw new Error("이미지를 만들지 못했습니다");
+    const body = new FormData();
+    body.append("image", blob, "frame.jpg"); body.append("barcode", item.barcode); body.append("shot", shot);
+    const res = await fetch("/api/scan", { method: "POST", body });
+    if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+    const data = await res.json();
+    if (data.final_date !== "NONE") {
+      if (!item.date) { item.date = { year: data.year, month: data.month, day: data.day }; item.source = "ocr"; item.ocr = data; }
+    } else {
+      item.tries += 1;
+      if (item.fullTried && shot !== "first") item.failed = true;
+    }
+    $("msg").textContent = `판독 ${data.elapsed_ms}ms (${data.stage})`;
+  } catch (e) {
+    $("msg").textContent = `판독 실패: ${e.message}`;
+  } finally {
+    inflight = false;
   }
 }
 
 function tick() {
-  if (busy || video.readyState < 2) return;
+  if (formOpen || video.readyState < 2) return;
   sctx.drawImage(video, 0, 0, small.width, small.height);
   const gray = toGray(sctx.getImageData(0, 0, small.width, small.height).data);
   if (!base) { base = gray; prev = gray; return; }
   const diff = meanAbsDiff(gray, prev), scene = meanAbsDiff(gray, base);
   prev = gray;
-  const prevPhase = state.phase;
-  const r = step(state, diff, scene);
-  state = r.state;
-  if (prevPhase === "empty" && state.phase === "present") presentAt = performance.now();   // ROI 시작점: 상품이 화면에 들어온 순간
-  if (state.phase === "empty" && diff < DEFAULTS.stillT) {
-    for (let i = 0; i < base.length; i += 1) base[i] = (base[i] * 9 + gray[i]) / 10;   // 조명 변화에 배경을 천천히 맞춘다
+  state = step(state, diff, scene);
+  if (state.phase === "empty") {
+    if (diff < DEFAULTS.stillT) for (let i = 0; i < base.length; i += 1) base[i] = (base[i] * 9 + gray[i]) / 10;
+    if (cur || cooldown) { cur = null; cooldown = false; lastSaved = ""; render(); }
+    return;
   }
-  $("phase").textContent = PHASE[state.phase];
-  if (r.capture) capture(false);
-}
-
-function readBarcode() {
-  if (video.readyState < 2) return "";
-  try {
-    full.width = video.videoWidth;
-    full.height = video.videoHeight;
-    full.getContext("2d").drawImage(video, 0, 0);
-    return reader.decodeFromCanvas(full).getText();
-  } catch (e) { return ""; }   // 못 찾으면 예외
-}
-
-// shot: "first" = 스캐너 직후 1차(싼 모드, 날짜 면이 안 보이면 바로 NONE), "second" = 날짜 면 재촬영(전체 재시도),
-//       "full" = 스캐너 없이 찍은 경우(전체 재시도, 기존 동작)
-async function capture(manual, shot) {
-  if (video.readyState < 2) return;   // 프레임이 아직 없으면 찍지 않는다 (busy 를 세우기 전에 확인)
-  busy = true;
-  shot = shot || (pendingSecond ? "second" : "full");
-  lastShot = shot;
-  if (shot === "full") capturedAt = manual ? performance.now() : presentAt;   // 스캐너 촬영은 스캔 순간에 이미 찍어 둠
-  $("phase").textContent = shot === "second" ? "날짜 면 판독 중" : "판독 중";
-  try {
-    const barcode = scanBarcode || readBarcode();
-    const blob = await new Promise((resolve) => full.toBlob(resolve, "image/jpeg", 0.92));
-    if (!blob) throw new Error("이미지를 만들지 못했습니다");
-    const body = new FormData();
-    body.append("image", blob, "frame.jpg");
-    body.append("barcode", barcode);
-    body.append("shot", shot);
-    const res = await fetch("/api/scan", { method: "POST", body });
-    if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
-    const data = await res.json();
-    if (shot === "first" && data.final_date === "NONE") {
-      // 1차에 날짜가 없다: 폼을 열지 않고 날짜 면을 기다린다. 상태 기계를 present 로 되돌려 다음 멈춤에 다시 찍게 한다
-      pendingSecond = true;
-      state = { phase: "present", still: 0 };
-      $("phase").textContent = "날짜 면을 보여 주세요";
-      $("msg").textContent = `1차 촬영 ${data.elapsed_ms}ms: 날짜를 찾지 못했습니다. 날짜가 보이는 면을 카메라에 대고 잠시 멈춰 주세요.`;
-      busy = false;
-      return;
+  ticks += 1;
+  if (cooldown) {                     // 저장 직후: 상품을 치우거나 다른 바코드가 보일 때까지 쉰다
+    if (ticks % 2 === 0) {
+      const text = readBarcodeText();
+      if (text && productKey(text) !== lastSaved) { cooldown = false; cur = newItem(); setBarcode(text); }
     }
-    pendingSecond = false;
-    showForm(data, barcode);
-  } catch (e) {
-    $("msg").textContent = `판독 실패: ${e.message}`;
-    busy = false;
+    return;
+  }
+  if (!cur) cur = newItem();
+  if (!cur.barcode && ticks % 2 === 0) { const text = readBarcodeText(); if (text) setBarcode(text); }
+  if (!cur.date && !cur.failed && performance.now() - cur.lastOcr > OCR_EVERY_MS) ocrFrame();
+  render();
+  maybeComplete();
+}
+
+function render() {
+  const b = $("chipBarcode"), d = $("chipDate");
+  b.classList.toggle("ok", !!(cur && cur.barcode));
+  d.classList.toggle("ok", !!(cur && cur.date));
+  b.textContent = cur && cur.barcode ? `바코드 ${cur.productName || cur.barcode}` : "바코드";
+  d.textContent = cur && cur.date ? `소비기한 ${cur.date.year}-${cur.date.month}-${cur.date.day}${cur.source === "barcode" ? " (바코드)" : ""}` : "소비기한";
+  $("phase").textContent = cooldown ? "저장 완료: 다음 상품을 대 주세요"
+    : !cur ? "상품을 카메라 앞에서 돌려 주세요"
+    : !cur.barcode && !cur.date ? "바코드와 소비기한을 찾는 중"
+    : !cur.barcode ? "바코드 면을 보여 주세요" : !cur.date ? "소비기한 면을 보여 주세요" : "확인 중";
+}
+
+function maybeComplete() {
+  if (!cur || formOpen) return;
+  if (cur.date && cur.barcode) {
+    if (cur.source === "barcode" || (cur.ocr && !cur.ocr.needs_review)) autoSave();
+    else openForm();
+  } else if (cur.failed) {
+    openForm();                       // 소비기한을 끝내 못 읽음: 직접 입력
   }
 }
 
-const blank = (v) => (v === "NONE" ? "" : v);
+const seconds = () => Math.round((performance.now() - cur.startedAt) / 100) / 10;
+
+function itemFrom(date, edited) {
+  const o = cur.ocr;
+  return {
+    barcode: cur.barcode, product_name: cur.productName, year: date.year, month: date.month, day: date.day,
+    confidence: cur.source === "barcode" ? 1 : (o ? o.confidence : null),
+    needs_review: cur.source === "barcode" ? false : (o ? o.needs_review : true),
+    edited, second_shot: cur.fullTried, stage: cur.source === "barcode" ? "gs1" : (o ? o.stage : ""),
+    evidence: cur.source === "barcode" ? ["GS1 바코드 유효기한"] : (o ? o.evidence : []),
+    mode: "scan", seconds: seconds(),
+  };
+}
+
+async function post(item) {
+  const res = await fetch("/api/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) });
+  if (res.status === 422) throw new Error("날짜 형식을 확인해 주세요 (연 4자리, 월과 일 2자리)");
+  if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+}
+
+function done(item) {
+  beep();
+  $("flash").hidden = false; setTimeout(() => { $("flash").hidden = true; }, 350);
+  $("msg").textContent = `저장: ${item.product_name || item.barcode || "(바코드 없음)"} ${item.year}-${item.month}-${item.day} (${item.seconds}초)`;
+  lastSaved = item.barcode; cooldown = true; cur = null; render();
+}
+
+async function autoSave() {
+  const item = itemFrom(cur.date, false);
+  formOpen = true;                    // 저장 중 중복 방지
+  try { await post(item); done(item); } catch (e) { $("msg").textContent = `저장 실패: ${e.message}`; }
+  finally { formOpen = false; }
+}
+
+// ---- 확인 화면: 신뢰도가 낮거나 못 읽었거나 바코드 없이 저장할 때
+const blank = (v) => (!v || v === "NONE" ? "" : v);
 const part = (id, width) => { const v = $(id).value.trim(); return v ? v.padStart(width, "0") : "NONE"; };
 
-function showForm(data, barcode) {
-  ocr = data;
+function openForm() {
+  if (!cur) cur = newItem();
+  formOpen = true;
+  const o = cur.ocr;
   $("form").hidden = false;
-  $("form").classList.toggle("review", data.needs_review);
-  $("badge").textContent = `${data.needs_review ? "확인 필요" : "자동 통과"} ${Math.round(data.confidence * 100)}%`;
-  $("save").textContent = data.needs_review ? "확인하고 저장" : "저장";
-  $("barcode").value = barcode;
-  $("pname").value = data.product ? data.product.name : "";
-  $("year").value = blank(data.year);
-  $("month").value = blank(data.month);
-  $("day").value = blank(data.day);
-  $("evidence").replaceChildren(...data.evidence.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
-  $("msg").textContent = `판독 ${data.elapsed_ms}ms, 시도 단계 ${data.stage}` + (lastShot === "second" ? " (날짜 면 재촬영)" : "");
+  $("form").classList.toggle("review", true);
+  $("badge").textContent = o ? `확인 필요 ${Math.round(o.confidence * 100)}%` : "직접 입력";
+  $("barcode").value = cur.barcode;
+  $("pname").value = cur.productName;
+  $("year").value = blank(cur.date && cur.date.year);
+  $("month").value = blank(cur.date && cur.date.month);
+  $("day").value = blank(cur.date && cur.date.day);
+  $("evidence").replaceChildren(...(o ? o.evidence : []).map((t) => Object.assign(document.createElement("li"), { textContent: t })));
 }
 
 function closeForm(message) {
-  $("form").hidden = true;
-  $("msg").textContent = message;
-  ocr = null;
-  scanBarcode = "";
-  pendingSecond = false;
-  state = { phase: "captured", still: 0 };   // 물건을 치울 때까지 다시 찍지 않는다
-  busy = false;
+  $("form").hidden = true; formOpen = false;
+  if (message) $("msg").textContent = message;
 }
 
-async function save() {
-  const year = $("year").value.trim() || "NONE", month = part("month", 2), day = part("day", 2);
-  const item = {
-    barcode: $("barcode").value.trim(), product_name: $("pname").value.trim(), year, month, day,
-    confidence: ocr.confidence, needs_review: ocr.needs_review, stage: ocr.stage, evidence: ocr.evidence,
-    edited: year !== ocr.year || month !== ocr.month || day !== ocr.day,
-    second_shot: lastShot === "second",
-    mode: "scan", seconds: Math.round((performance.now() - capturedAt) / 100) / 10,
-  };
+async function saveForm() {
+  const date = { year: $("year").value.trim() || "NONE", month: part("month", 2), day: part("day", 2) };
+  cur.barcode = $("barcode").value.trim(); cur.productName = $("pname").value.trim();
+  const before = cur.date || { year: "NONE", month: "NONE", day: "NONE" };
+  const item = itemFrom(date, date.year !== before.year || date.month !== before.month || date.day !== before.day);
   $("save").disabled = true;
-  try {
-    const res = await fetch("/api/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) });
-    if (res.status === 422) { $("msg").textContent = "저장 실패: 날짜 형식을 확인해 주세요 (연 4자리, 월과 일 2자리)"; return; }
-    if (!res.ok) { $("msg").textContent = `저장 실패: 서버 오류 ${res.status}`; return; }
-    closeForm(`저장했습니다 (${item.seconds}초). 상품을 치우고 다음 상품을 대 주세요.`);
-  } catch (e) {
-    $("msg").textContent = "저장 실패: 서버에 연결할 수 없습니다";   // 폼은 열어 둔다: 재시도할 수 있게
-  } finally {
-    $("save").disabled = false;
-  }
+  try { await post(item); closeForm(); done(item); }
+  catch (e) { $("msg").textContent = `저장 실패: ${e.message}`; }
+  finally { $("save").disabled = false; }
 }
 
 async function findProduct() {
@@ -148,35 +224,31 @@ async function findProduct() {
     const res = await fetch(`/api/product/${encodeURIComponent($("barcode").value.trim())}`);
     $("pname").value = res.ok ? (await res.json()).name : "";
     if (!res.ok) $("msg").textContent = "등록되지 않은 바코드입니다. 상품명을 직접 적어 주세요.";
-  } catch (e) {
-    $("msg").textContent = "상품 조회 실패: 서버에 연결할 수 없습니다";
-  }
+  } catch (e) { $("msg").textContent = "상품 조회 실패: 서버에 연결할 수 없습니다"; }
 }
 
-$("shoot").onclick = () => { if (!busy) capture(true); };
+$("start").onclick = start;
+$("shoot").onclick = () => { if (!formOpen) { cur = cur || newItem(); cooldown = false; ocrFrame("full"); } };
+$("confirm").onclick = () => { if (!formOpen) openForm(); };
+$("rebase").onclick = () => { base = null; state = initial(); $("msg").textContent = "빈 배경을 다시 잡았습니다."; };
+$("rescan").onclick = () => { const t = readBarcodeText(); if (t) { $("barcode").value = productKey(t); findProduct(); } else $("msg").textContent = "바코드를 찾지 못했습니다."; };
+$("find").onclick = findProduct;
+$("save").onclick = saveForm;
+$("skip").onclick = () => { closeForm("버렸습니다."); cur = null; cooldown = true; lastSaved = ""; render(); };
 
-// 바코드 스캐너: 키보드 입력 장치처럼 숫자를 빠르게 치고 엔터를 보낸다. 입력 칸에 포커스가 없을 때 받는다.
-// 스캐너가 없으면 숫자 8자리 이상 + 엔터를 직접 쳐서 같은 흐름을 시연할 수 있다.
+// USB 바코드 스캐너: 키보드처럼 숫자와 엔터를 빠르게 보낸다 (입력 칸에 포커스가 없을 때)
 let keyBuf = "", keyAt = 0;
 document.addEventListener("keydown", (e) => {
   const tag = (e.target.tagName || "").toUpperCase();
   if (tag === "INPUT" || tag === "TEXTAREA") return;
   const now = performance.now();
-  if (now - keyAt > 500) keyBuf = "";          // 사람이 천천히 치는 것과 구분: 0.5초 넘게 쉬면 새로 시작
+  if (now - keyAt > 500) keyBuf = "";
   keyAt = now;
-  if (/^\d$/.test(e.key)) { keyBuf += e.key; return; }
-  if (e.key !== "Enter") return;
-  if (keyBuf.length < 8) { keyBuf = ""; return; }
+  if (e.key.length === 1) { keyBuf += e.key; return; }
+  if (e.key !== "Enter" || keyBuf.length < 8) { if (e.key === "Enter") keyBuf = ""; return; }
   e.preventDefault();
-  const code = keyBuf; keyBuf = "";
-  if (busy) { $("msg").textContent = "판독 중입니다. 잠시 뒤 다시 스캔해 주세요."; return; }
-  scanBarcode = code;
-  capturedAt = now;                            // ROI 시계: 스캔 순간부터 저장까지
-  capture(true, "first");
+  const text = keyBuf; keyBuf = "";
+  if (formOpen) return;
+  cooldown = false; cur = newItem(); setBarcode(text);
 });
-$("rebase").onclick = () => { base = null; state = initial(); $("msg").textContent = "빈 배경을 다시 잡았습니다."; };
-$("rescan").onclick = () => { const code = readBarcode(); if (code) { $("barcode").value = code; findProduct(); } else $("msg").textContent = "바코드를 찾지 못했습니다."; };
-$("find").onclick = findProduct;
-$("save").onclick = save;
-$("skip").onclick = () => closeForm("버렸습니다. 상품을 치우고 다시 대 주세요.");
-start();
+render();

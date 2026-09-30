@@ -23,16 +23,22 @@ CREATE TABLE IF NOT EXISTS items (
   evidence TEXT NOT NULL DEFAULT '[]',
   mode TEXT NOT NULL DEFAULT 'scan',
   seconds REAL,
-  second_shot INTEGER NOT NULL DEFAULT 0
+  second_shot INTEGER NOT NULL DEFAULT 0,
+  moved INTEGER NOT NULL DEFAULT 0
 )"""
 CSV_COLS = ["id", "created_at", "barcode", "product_name", "final_date", "confidence",
-            "needs_review", "edited", "second_shot", "stage", "mode", "seconds"]
+            "needs_review", "edited", "second_shot", "moved", "stage", "mode", "seconds"]
 
 
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)   # FastAPI 스레드풀에서 같이 쓴다. 쓰기는 서버가 잠금으로 직렬화
     conn.row_factory = sqlite3.Row
     conn.execute(SCHEMA)
+    for col in ("second_shot", "moved"):          # 이전 버전 DB 에 없는 열 추가
+        try:
+            conn.execute(f"ALTER TABLE items ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
     return conn
 
 
@@ -62,15 +68,24 @@ def add_item(conn, item: dict) -> int:
     return cur.lastrowid
 
 
-def list_items(conn, today: datetime.date) -> list[dict]:
+def list_items(conn, today: datetime.date, days_for=None) -> list[dict]:
+    """days_for(barcode) -> 할인 대상 기준 일수. 없으면 3일."""
     out = []
     for r in conn.execute("SELECT * FROM items"):
         d = dict(r)
-        d["needs_review"], d["edited"], d["second_shot"] = bool(d["needs_review"]), bool(d["edited"]), bool(d["second_shot"])
+        for k in ("needs_review", "edited", "second_shot", "moved"):
+            d[k] = bool(d[k])
         d["evidence"] = json.loads(d["evidence"])
-        d["days_left"], d["status"] = status_of(d["final_date"], today)
+        d["discount_days"] = days_for(d["barcode"]) if days_for else 3
+        d["days_left"], d["status"] = status_of(d["final_date"], today, d["discount_days"])
         out.append(d)
     return sorted(out, key=lambda d: (d["days_left"] is None, d["days_left"] or 0, d["id"]))
+
+
+def set_moved(conn, item_id: int, moved: bool = True) -> bool:
+    cur = conn.execute("UPDATE items SET moved = ? WHERE id = ?", (int(moved), item_id))
+    conn.commit()
+    return cur.rowcount == 1
 
 
 def stats(conn) -> dict:
@@ -84,10 +99,17 @@ def stats(conn) -> dict:
             "second_shot_rate": None if second is None else round(second, 4)}
 
 
-def to_csv(conn) -> str:
+def to_csv(conn, rows: list[dict] | None = None) -> str:
+    """rows 를 주면 그 목록만(예: 할인 대상), 없으면 전체를 id 순으로."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(CSV_COLS)
-    for r in conn.execute(f"SELECT {', '.join(CSV_COLS)} FROM items ORDER BY id"):
-        w.writerow(list(r))
+    if rows is None:
+        w.writerow(CSV_COLS)
+        for r in conn.execute(f"SELECT {', '.join(CSV_COLS)} FROM items ORDER BY id"):
+            w.writerow(list(r))
+    else:
+        cols = CSV_COLS + ["days_left", "discount_days"]
+        w.writerow(cols)
+        for d in rows:
+            w.writerow([int(d[c]) if isinstance(d[c], bool) else d[c] for c in cols])
     return buf.getvalue()

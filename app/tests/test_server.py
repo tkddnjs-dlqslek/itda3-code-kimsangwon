@@ -80,3 +80,18 @@ def test_save_rejects_malformed_date_parts(client):
 def test_product_endpoint(client):
     assert client.get("/api/product/8800000000028").json()["name"] == "시연용 두부 300g"
     assert client.get("/api/product/1234567890123").status_code == 404
+
+
+def test_discount_list_and_moved(client):
+    import datetime
+    soon = datetime.date.today() + datetime.timedelta(days=2)
+    item = {"barcode": "8800000000011", "year": str(soon.year), "month": f"{soon.month:02d}", "day": f"{soon.day:02d}"}
+    far = dict(item, year=str(soon.year + 1))
+    i1 = client.post("/api/items", json=item).json()["id"]
+    client.post("/api/items", json=far)
+    targets = client.get("/api/items?discount=1").json()
+    assert [t["id"] for t in targets] == [i1] and targets[0]["discount_days"] == 5
+    assert "discount_targets.csv" in client.get("/api/items.csv?discount=1").headers["content-disposition"]
+    assert client.post(f"/api/items/{i1}/moved").json() == {"id": i1, "moved": True}
+    assert client.get("/api/items?discount=1").json() == []
+    assert client.post("/api/items/999/moved").status_code == 404

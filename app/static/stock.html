@@ -3,19 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>재고 목록</title>
+  <title>재고와 할인 대상</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1>재고 목록 (기한 빠른 순)</h1>
-    <nav><a href="/">촬영</a><a href="stock.html">재고 목록</a><a href="/api/items.csv">CSV 내려받기</a></nav>
+    <h1>재고와 할인 대상</h1>
+    <nav><a href="/">스캔</a><a href="stock.html">재고와 할인 대상</a></nav>
   </header>
   <main style="grid-template-columns:1fr">
     <div class="card" id="stats"></div>
     <div class="card">
+      <div class="tabs">
+        <button id="tabDiscount" class="on">할인 대상</button>
+        <button id="tabAll">전체 재고</button>
+        <a id="csv" href="/api/items.csv?discount=1" style="margin-left:auto">CSV 내려받기</a>
+      </div>
+      <p class="msg" id="rule"></p>
       <table>
-        <thead><tr><th>상태</th><th>소비기한</th><th>남은 일수</th><th>상품</th><th>바코드</th><th>신뢰도</th><th>입력</th><th>소요</th></tr></thead>
+        <thead><tr><th>상태</th><th>소비기한</th><th>남은 일수</th><th>상품</th><th>바코드</th><th>신뢰도</th><th>입력</th><th>처리</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>

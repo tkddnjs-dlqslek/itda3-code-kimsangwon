@@ -90,3 +90,22 @@ def test_csv_has_header_and_rows():
     lines = store.to_csv(conn).strip().splitlines()
     assert lines[0].startswith("id,created_at,barcode,product_name,final_date")
     assert "우유" in lines[1] and "2026-09-25" in lines[1]
+
+
+def test_discount_days_by_category():
+    table = products.load()
+    assert products.discount_days("8800000000011", table) == 5      # 유제품
+    assert products.discount_days("8800000000110", table) == 90     # 의약품
+    assert products.discount_days("0000000000000", table) == products.DEFAULT_DISCOUNT_DAYS
+
+
+def test_list_uses_per_item_discount_days_and_moved_flag():
+    conn = store.connect(":memory:")
+    a = store.add_item(conn, _item(barcode="A", day="30"))           # 11일 남음
+    rows = store.list_items(conn, TODAY, lambda b: 21)
+    assert rows[0]["status"] == "imminent" and rows[0]["discount_days"] == 21
+    assert store.list_items(conn, TODAY, lambda b: 5)[0]["status"] == "ok"
+    assert store.set_moved(conn, a) and store.list_items(conn, TODAY)[0]["moved"] is True
+    assert store.set_moved(conn, 999) is False
+    csv_rows = store.to_csv(conn, store.list_items(conn, TODAY, lambda b: 21)).splitlines()
+    assert csv_rows[0].endswith("days_left,discount_days") and csv_rows[1].endswith(",11,21")

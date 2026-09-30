@@ -105,17 +105,33 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
         with _db_lock:
             return {"id": store.add_item(conn, item.model_dump())}
 
-    @app.get("/api/items")
-    def items():
+    days_for = lambda barcode: products.discount_days(barcode, catalog)
+
+    def list_rows(discount: int) -> list[dict]:
         with _db_lock:
-            return store.list_items(conn, datetime.date.today())
+            rows = store.list_items(conn, datetime.date.today(), days_for)
+        # 할인 대상: 남은 일수가 분류별 기준 이하(기한 지남 포함)이고 아직 옮기지 않은 것
+        return [r for r in rows if r["status"] in ("imminent", "expired") and not r["moved"]] if discount else rows
+
+    @app.get("/api/items")
+    def items(discount: int = 0):
+        return list_rows(discount)
+
+    @app.post("/api/items/{item_id}/moved")
+    def moved(item_id: int, value: int = 1):
+        with _db_lock:
+            if not store.set_moved(conn, item_id, bool(value)):
+                raise HTTPException(status_code=404, detail="없는 항목")
+        return {"id": item_id, "moved": bool(value)}
 
     @app.get("/api/items.csv", response_class=PlainTextResponse)
-    def items_csv():
+    def items_csv(discount: int = 0):
+        rows = list_rows(1) if discount else None
         with _db_lock:
-            csv_text = store.to_csv(conn)
+            csv_text = store.to_csv(conn, rows)
+        name = "discount_targets.csv" if discount else "items.csv"
         return PlainTextResponse("﻿" + csv_text, media_type="text/csv; charset=utf-8",
-                                  headers={"Content-Disposition": "attachment; filename=items.csv"})
+                                  headers={"Content-Disposition": f"attachment; filename={name}"})
 
     @app.get("/api/stats")
     def stats():

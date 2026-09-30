@@ -43,6 +43,26 @@ OCR이 장당 1.5초라 프레임마다 돌릴 수 없습니다. 그래서 물�
 2차 촬영이 필요했던 비율은 재고 화면 통계에 나옵니다(`second_shot`). 바코드 면과 날짜 면이 다른 상품(페트병,
 캔, 상자 옆면)의 비율을 실측하는 용도입니다.
 
+## 휴대폰으로 쓰기와 연속 스캔 (09-30)
+
+휴대폰 브라우저는 https 에서만 카메라를 연다. PC 와 휴대폰을 같은 와이파이에 두고:
+
+```bash
+bash app/tools/make_cert.sh <PC의 IPv4 주소>          # 자체 서명 인증서 (app/.data, 커밋 안 됨)
+python -m uvicorn server:create_app --factory --app-dir app --host 0.0.0.0 --port 8443   --ssl-keyfile app/.data/key.pem --ssl-certfile app/.data/cert.pem
+```
+
+휴대폰에서 `https://<IP>:8443` 접속, 경고 화면에서 계속, "스캔 시작". 윈도우 방화벽 창이 뜨면 허용한다.
+
+흐름: 상품을 카메라 앞에서 돌리면 바코드는 0.5초마다 브라우저가 찾고, 소비기한은 1.2초마다 서버 싼 모드로 판독한다.
+화면 위 두 칸(바코드, 소비기한)이 모두 채워지고 신뢰도가 기준 이상이면 완료음과 함께 자동 저장, 낮으면 확인 화면.
+싼 모드로 3번 못 읽으면 전체 재시도 1번, 그래도 없으면 직접 입력. 의약품 GS1 2D 바코드(AI 17)에 유효기한이
+있으면 OCR 없이 바코드에서 읽는다 (`static/gs1.js`).
+
+할인 대상: 소비기한까지 남은 일수가 분류별 기준 이하인 상품 (`products.DISCOUNT_DAYS`: 신선 3일, 유제품 5일,
+가공식품과 음료 21일, 의약품과 화장품 90일, 미등록 21일). 재고 화면 "할인 대상" 탭에서 옮긴 뒤 "옮김"을 누르면
+빠지고, `GET /api/items.csv?discount=1` 로 목록을 내려받는다.
+
 ## 신뢰도 점수
 
 학습 모델이 아니라 조회표입니다. 예측을 네 조건(처음 시도에서 풀렸나, 날짜가 완전한가, 만료 키워드 근거가
@@ -76,5 +96,5 @@ fold B: 자동 통과 430/500 (86.0%), 자동 통과 정답률 95.8%, 확인 대
 
 ```bash
 python -m pytest app/tests -q
-node --test app/static/motion.test.js
+node --test app/static/motion.test.js app/static/gs1.test.js
 ```
