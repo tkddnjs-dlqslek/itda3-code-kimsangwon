@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "src"))
 import confidence  # noqa: E402
 import products  # noqa: E402
 import store  # noqa: E402
+import verify  # noqa: E402
 
 DB_PATH = os.path.join(HERE, ".data", "items.db")
 STATIC = os.path.join(HERE, "static")
@@ -107,6 +108,31 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
         return {"year": row["year"], "month": row["month"], "day": row["day"], "final_date": row["final_date"],
                 **verdict, "stage": row["stage"], "evidence": row["texts"][:12], "shot": shot,
                 "product": products.lookup(barcode, catalog), "elapsed_ms": int((time.time() - t0) * 1000)}
+
+    @app.post("/api/verify")
+    def verify_listing(image: UploadFile = File(...), min_months: int = Form(0, ge=0, le=60),
+                       product_name: str = Form("")):
+        """중고거래 게시글용: 소비기한 표시 사진 한 장으로 등록 가능(allow), 불가(block), 운영자 확인(review) 판정.
+        저장하지 않는다. 게시글 등록은 플랫폼 몫이고 여기는 판정만 돌려준다."""
+        t0 = time.time()
+        suffix = os.path.splitext(image.filename or "")[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+            f.write(image.file.read())
+            tmp = f.name
+        try:
+            row = run_ocr(tmp, "full")
+            assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)
+        except Exception:                     # 이미지가 아니거나 디코딩 실패: 500 대신 운영자 확인으로
+            row = {"year": "NONE", "month": "NONE", "day": "NONE", "final_date": "NONE", "stage": "error", "texts": []}
+            assessed = {"confidence": None, "needs_review": True, "bucket": "error"}
+        finally:
+            os.unlink(tmp)
+        v = verify.verdict(row["year"], row["month"], row["day"], datetime.date.today(), min_months, assessed["needs_review"])
+        if row["stage"] == "error":
+            v["reason"] = "이미지를 판독하지 못했습니다. 운영자 확인이 필요합니다"
+        return {"year": row["year"], "month": row["month"], "day": row["day"], "final_date": row["final_date"],
+                **v, **assessed, "stage": row["stage"], "evidence": row["texts"][:12],
+                "min_months": min_months, "product_name": product_name, "elapsed_ms": int((time.time() - t0) * 1000)}
 
     @app.get("/api/product/{barcode}")
     def product(barcode: str):

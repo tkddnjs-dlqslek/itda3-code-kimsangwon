@@ -97,3 +97,60 @@ def test_discount_list_and_moved(client):
     assert client.post(f"/api/items/{i1}/moved").json() == {"id": i1, "moved": True}
     assert client.get("/api/items?discount=1").json() == []
     assert client.post("/api/items/999/moved").status_code == 404
+
+
+def test_verify_allows_when_enough_months(client, monkeypatch):
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": dict(STUB, year="2099", month="12", day="31", final_date="2099-12-31"))
+    r = client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")},
+                    data={"min_months": "6", "product_name": "비타민C"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verdict"] == "allow" and body["deadline"] == "2099-12-31"
+    assert body["months_left"] >= 6 and body["min_months"] == 6 and body["product_name"] == "비타민C"
+    assert body["evidence"] == STUB["texts"] and body["elapsed_ms"] >= 0
+
+
+def test_verify_blocks_expired(client):
+    # STUB 은 2026-09-25. 테스트 실행일이 그 이후이므로 block
+    r = client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
+    assert r.status_code == 200 and r.json()["verdict"] == "block"
+
+
+def test_verify_defaults_min_months_to_0(client, monkeypatch):
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": dict(STUB, year="2099", month="12", day="31", final_date="2099-12-31"))
+    r = client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
+    assert r.json()["min_months"] == 0 and r.json()["verdict"] == "allow"
+
+
+def test_verify_rejects_bad_min_months(client):
+    for bad in ("-1", "61", "abc"):
+        r = client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")}, data={"min_months": bad})
+        assert r.status_code == 422, bad
+
+
+def test_verify_none_date_is_review(client, monkeypatch):
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": dict(STUB, year="NONE", month="NONE", day="NONE", final_date="NONE", stage="fail", texts=[]))
+    r = client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
+    body = r.json()
+    assert body["verdict"] == "review" and body["months_left"] is None
+
+
+def test_verify_ocr_exception_becomes_review(client, monkeypatch):
+    def boom(path, mode="full"):
+        raise RuntimeError("cv2.imread failed")
+    monkeypatch.setattr(server, "run_ocr", boom)
+    r = client.post("/api/verify", files={"image": ("a.txt", b"not an image", "text/plain")})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verdict"] == "review" and "판독하지 못했습니다" in body["reason"]
+    assert body["final_date"] == "NONE" and body["confidence"] is None
+
+
+def test_verify_uses_full_mode(client, monkeypatch):
+    seen = {}
+    def fake(path, mode="full"):
+        seen["mode"] = mode
+        return dict(STUB)
+    monkeypatch.setattr(server, "run_ocr", fake)
+    client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
+    assert seen["mode"] == "full"
