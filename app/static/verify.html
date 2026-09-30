@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>소비기한 기한 검증</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>중고거래 기한 검증</h1>
+    <nav><a href="/">스캔</a><a href="stock.html">재고와 할인 대상</a><a href="verify.html">기한 검증</a></nav>
+  </header>
+  <main>
+    <section class="card">
+      <p class="msg">판매자가 소비기한 표시 부분을 찍어 올리면 남은 기간을 읽어 등록 가능 여부를 판정합니다. 사진은 저장하지 않습니다.</p>
+      <label>상품명 (선택)</label><input id="pname" placeholder="예: 비타민C 1000 60정">
+      <label>기준 개월 수</label><input id="minMonths" type="number" min="0" max="60" value="0" inputmode="numeric">
+      <p class="msg">0 이면 소비기한 내 여부만 확인합니다(2025-05 식약처 기준). 시범사업 초기 기준은 6 이었습니다.</p>
+      <label>소비기한 표시 사진</label><input id="photo" type="file" accept="image/*" capture="environment">
+      <img id="preview" alt="" hidden style="max-width:100%;border-radius:8px;margin-top:8px">
+      <div class="bar"><button class="primary" id="run">검증</button></div>
+      <p class="msg" id="msg"></p>
+    </section>
+    <section class="card verdict" id="result" hidden>
+      <h2 id="title"></h2>
+      <p class="phase" id="reason"></p>
+      <p class="msg" id="detail"></p>
+      <ul class="evidence" id="evidence"></ul>
+    </section>
+  </main>
+  <script type="module" src="verify.js"></script>
+</body>
+</html>

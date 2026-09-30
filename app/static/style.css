@@ -41,3 +41,7 @@ button.big { width:100%; padding:14px; font-size:18px; margin-bottom:10px; }
 td button { padding:4px 10px; font-size:13px; }
 tr.moved td { color:var(--dim); text-decoration:line-through; }
 @media (max-width:600px) { main { padding:12px; gap:12px; } header { padding:12px 16px; } header h1 { font-size:17px; } th:nth-child(5), td:nth-child(5), th:nth-child(7), td:nth-child(7) { display:none; } }
+.verdict.allow { border-left: 6px solid #1b5e20; }
+.verdict.block { border-left: 6px solid #b71c1c; }
+.verdict.review { border-left: 6px solid #616161; }
+.verdict h2 { margin-top: 0; }
