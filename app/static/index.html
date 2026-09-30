@@ -14,11 +14,12 @@
   <main>
     <section>
       <button class="primary big" id="start">스캔 시작</button>
-      <div class="chips"><span class="chip" id="chipBarcode">바코드</span><span class="chip" id="chipDate">소비기한</span></div>
       <div class="camwrap"><video id="video" playsinline muted></video><div class="flash" id="flash" hidden></div></div>
+      <div class="chips"><span class="chip" id="chipBarcode">바코드</span><span class="chip" id="chipDate">소비기한</span></div>
       <div class="bar">
         <span class="phase" id="phase">스캔 시작을 눌러 주세요</span>
       </div>
+      <ul id="recent"></ul>
       <div class="bar">
         <button id="shoot">지금 판독</button>
         <button id="confirm">확인 화면 열기</button>

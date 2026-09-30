@@ -1,6 +1,6 @@
 import { DEFAULTS, initial, step, toGray, meanAbsDiff } from "./motion.js";
 import { parseGS1, productKey } from "./gs1.js";
-import { nextShot } from "./retry.js";
+import { nextShot, barcodeChange } from "./retry.js";
 
 // 연속 스캔 (09-30): 검수원이 상품을 카메라 앞에서 돌리는 동안
 //   바코드는 브라우저가 0.5초마다 찾고 (GS1 2D 바코드에 유효기한이 있으면 그걸로 끝),
@@ -20,6 +20,7 @@ let formOpen = false, inflight = false, cooldown = false, ticks = 0;
 let cur = null;                      // 지금 들고 있는 상품
 let lastSaved = "";                  // 방금 저장한 바코드 (치우기 전 같은 상품 중복 저장 방지)
 let audio = null;
+let recent = [];                     // 최근 저장 목록 (최대 3건, 최신이 앞)
 
 const newItem = () => ({ barcode: "", productName: "", date: null, source: "", ocr: null,
   tries: 0, lastFullAt: null, gotWith: null, startedAt: performance.now(), lastOcr: 0 });
@@ -126,15 +127,19 @@ function tick() {
     return;
   }
   ticks += 1;
-  if (cooldown) {                     // 저장 직후: 상품을 치우거나 다른 바코드가 보일 때까지 쉰다
-    if (ticks % 2 === 0) {
-      const text = readBarcodeText();
-      if (text && productKey(text) !== lastSaved) { cooldown = false; cur = newItem(); setBarcode(text); }
+  if (ticks % 2 === 0) {              // 바코드는 상품을 들고 있는 내내 매번 읽는다: 안 그러면 A 를 든 채 B 를 대도 A 로 남는다
+    const text = readBarcodeText();
+    const key = productKey(text);
+    const action = key ? barcodeChange(cur ? cur.barcode : "", key, lastSaved) : "none";
+    if (action === "switch") {        // 진행 중이던 상품과 다른 바코드: 버리고 새로 시작
+      $("msg").textContent = `다른 상품으로 바뀜: ${key}`;
+      cooldown = false; cur = newItem(); setBarcode(text);
+    } else if (action === "set") {    // 쿨다운 탈출 또는 바코드가 비어 있던 상품에 채움
+      cooldown = false; cur = cur || newItem(); setBarcode(text);
     }
-    return;
   }
+  if (cooldown) return;               // 저장 직후: 상품을 치우거나 다른 바코드가 보일 때까지 쉰다
   if (!cur) cur = newItem();
-  if (!cur.barcode && ticks % 2 === 0) { const text = readBarcodeText(); if (text) setBarcode(text); }
   // 손이 움직이는 중인 프레임은 판독에 쓰지 않는다: 흔들린 사진은 시도 횟수만 낭비한다
   if (!cur.date && diff < DEFAULTS.stillT && performance.now() - cur.lastOcr > OCR_EVERY_MS) ocrFrame();
   render();
@@ -182,17 +187,26 @@ async function post(item) {
   if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
 }
 
-function done(item) {
+function pushRecent(item, confirmed) {
+  const name = item.product_name || item.barcode || "(바코드 없음)";
+  const via = confirmed ? "확인 후 저장" : "자동 저장";
+  const gs1 = item.stage === "gs1" ? " (바코드)" : "";
+  recent = [`${name} ${item.year}-${item.month}-${item.day} ${via}${gs1}`, ...recent].slice(0, 3);
+  $("recent").replaceChildren(...recent.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+}
+
+function done(item, confirmed) {
   beep();
   $("flash").hidden = false; setTimeout(() => { $("flash").hidden = true; }, 350);
   $("msg").textContent = `저장: ${item.product_name || item.barcode || "(바코드 없음)"} ${item.year}-${item.month}-${item.day} (${item.seconds}초)`;
   lastSaved = item.barcode; cooldown = true; cur = null; render();
+  pushRecent(item, confirmed);
 }
 
 async function autoSave() {
   const item = itemFrom(cur.date, false);
   formOpen = true;                    // 저장 중 중복 방지
-  try { await post(item); done(item); } catch (e) { $("msg").textContent = `저장 실패: ${e.message}`; }
+  try { await post(item); done(item, false); } catch (e) { $("msg").textContent = `저장 실패: ${e.message}`; }
   finally { formOpen = false; }
 }
 
@@ -226,7 +240,7 @@ async function saveForm() {
   const before = cur.date || { year: "NONE", month: "NONE", day: "NONE" };
   const item = itemFrom(date, date.year !== before.year || date.month !== before.month || date.day !== before.day);
   $("save").disabled = true;
-  try { await post(item); closeForm(); done(item); }
+  try { await post(item); closeForm(); done(item, true); }
   catch (e) { $("msg").textContent = `저장 실패: ${e.message}`; }
   finally { $("save").disabled = false; }
 }
