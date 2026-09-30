@@ -12,7 +12,13 @@ import { nextShot, barcodeChange } from "./retry.js";
 const $ = (id) => document.getElementById(id);
 const video = $("video"), small = $("small"), full = $("full");
 const sctx = small.getContext("2d", { willReadFrequently: true });
-const reader = new ZXingBrowser.BrowserMultiFormatReader();
+// 바코드 판독 힌트: 1D 상품 바코드와 의약품 2D 만 찾고(오탐 감소), TRY_HARDER 로 작은 바코드까지 훑는다
+const hints = new Map();
+const F = ZXingBrowser.BarcodeFormat;         // DecodeHintType 은 번들이 이름으로 내보내지 않아 숫자 사용: 2 = POSSIBLE_FORMATS, 3 = TRY_HARDER
+hints.set(3, true);
+hints.set(2, [
+  F.EAN_13, F.EAN_8, F.UPC_A, F.CODE_128, F.DATA_MATRIX, F.QR_CODE]);
+const reader = new ZXingBrowser.BrowserMultiFormatReader(hints);
 const OCR_EVERY_MS = 1200;
 
 let state = initial(), prev = null, base = null;
@@ -40,7 +46,7 @@ async function start() {
   beep();                             // 휴대폰은 사용자 동작 뒤에만 소리를 허용한다
   try {
     video.srcObject = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 }, focusMode: "continuous" }, audio: false });
     await video.play();
     setInterval(tick, 250);
     $("phase").textContent = "상품을 카메라 앞에서 돌려 주세요";
