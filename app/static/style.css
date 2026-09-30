@@ -29,9 +29,9 @@ th { font-size:12px; color:var(--dim); font-weight:400; }
 
 /* 연속 스캔 (09-30) */
 button.big { width:100%; padding:14px; font-size:18px; margin-bottom:10px; }
-.chips { display:flex; gap:8px; margin-bottom:8px; }
-.chip { flex:1; text-align:center; padding:8px 6px; border-radius:8px; background:#f2f2f4; color:var(--dim); font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.chip.ok { background:#e8f5e9; color:#1b5e20; }
+.chips { position:absolute; top:8px; left:8px; right:8px; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+.chip { padding:6px 10px; border-radius:8px; background:rgba(0,0,0,.55); color:#fff; font-size:15px; font-weight:600; text-align:left; }
+.chip.ok { background:rgba(27,94,32,.85); }
 .camwrap { position:relative; }
 #recent { list-style:none; margin:4px 0 0; padding:0; font-size:14px; line-height:1.6; color:var(--dim); }
 #recent li:first-child { font-weight:700; color:var(--ink); }

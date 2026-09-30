@@ -156,8 +156,8 @@ function render() {
   const b = $("chipBarcode"), d = $("chipDate");
   b.classList.toggle("ok", !!(cur && cur.barcode));
   d.classList.toggle("ok", !!(cur && cur.date));
-  b.textContent = cur && cur.barcode ? `바코드 ${cur.productName || cur.barcode}` : "바코드";
-  d.textContent = cur && cur.date ? `소비기한 ${cur.date.year}-${cur.date.month}-${cur.date.day}${cur.source === "barcode" ? " (바코드)" : ""}` : "소비기한";
+  b.textContent = cur && cur.barcode ? `✓ 바코드: ${cur.productName || `미등록 ${cur.barcode}`}` : "바코드 찾는 중";
+  d.textContent = cur && cur.date ? `✓ 소비기한: ${cur.date.year}-${cur.date.month}-${cur.date.day}${cur.source === "barcode" ? " (바코드)" : ""}` : "소비기한 찾는 중";
   $("phase").textContent = cooldown ? "저장 완료: 다음 상품을 대 주세요"
     : !cur ? "상품을 카메라 앞에서 돌려 주세요"
     : !cur.barcode && !cur.date ? "바코드와 소비기한을 찾는 중"
