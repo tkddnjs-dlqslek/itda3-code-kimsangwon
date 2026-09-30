@@ -28,6 +28,7 @@ import store  # noqa: E402
 DB_PATH = os.path.join(HERE, ".data", "items.db")
 STATIC = os.path.join(HERE, "static")
 MAX_SECONDS = 8.0            # 장당 상한. 단계 사이에서만 확인하므로 실제로는 한 단계 길이만큼 넘을 수 있다
+MID_SECONDS = 4.0            # 중간 재시도(mid) 상한. 아래 run_ocr 의 mode="mid" 설명 참고
 _ocr_lock = threading.Lock()     # predict_one 은 전역 상태를 쓰고 CPU 를 다 쓰므로 한 번에 하나만
 _db_lock = threading.Lock()
 
@@ -35,15 +36,27 @@ _db_lock = threading.Lock()
 def run_ocr(path: str, mode: str = "full") -> dict:
     """mode="full": 채점 노트북과 같은 전체 재시도 (장당 상한 8초).
     mode="cheap": 스캐너 직후 1차 촬영용. s1, s2, det5 까지만 보고 날짜가 없으면 바로 NONE 을 돌려준다.
+    mode="mid": 1차와 전체 사이. det5 까지 보고도 없으면 침식(erode5) 한 번을 더 시도한다.
     회전, 침식, 확대는 "날짜가 화면에 있는데 안 읽힐 때" 쓰는 단계라, 날짜 면이 아예 안 보이는 1차 사진에
-    돌리면 8초를 낭비한 뒤에야 "날짜 면을 보여 주세요"를 띄우게 된다 (09-28). src/ 는 그대로 두고 앱에서 조합한다."""
+    돌리면 8초를 낭비한 뒤에야 "날짜 면을 보여 주세요"를 띄우게 된다 (09-28). src/ 는 그대로 두고 앱에서 조합한다.
+
+    mid 를 위해 src/ocr.py 의 read_raw(stage_cap=...) 를 먼저 확인했다: stage_cap 은 "s1" 과 "cheap" 문자열만
+    검사하고 그 외 값은 전부 "full" 과 같은 사다리를 탄다. 즉 이름으로 "erode5 까지만" 을 표현할 방법이 없다.
+    게다가 erode5 는 retry_upscale=True 일 때만 도는 블록 안에 있어서, cheap 처럼 retry_upscale=False 로는
+    아예 도달하지 못한다. 그래서 retry_upscale=True 로 켜고 read_raw 가 이미 노출하는 deadline(장당 시간
+    상한, 단계 사이에서만 확인)만으로 근사한다: MID_SECONDS 를 넘기면 erode3 부터는 late() 가 끊는다.
+    ponytail: 단계 하나(det5, erode5)는 끝까지 돌고 나서만 시간을 보므로 "정확히 erode5 에서 끊긴다"는
+    보장은 아니고, 이미지마다 앞 단계 소요가 달라 근사다. MID_SECONDS 는 실측 전 값이라 조정 가능."""
     import pipeline              # 무거운 임포트는 첫 판독까지 미룬다. 테스트는 이 함수를 바꿔 끼운다
     with _ocr_lock:
-        if mode != "cheap":
+        if mode == "full":
             return pipeline.predict_one(path, strict=False, retry_upscale=True, max_seconds=MAX_SECONDS)
         import ocr
         from dateparse import extract_date
-        items, stage = ocr.read_raw(path, False, "cheap", time.monotonic() + MAX_SECONDS)
+        if mode == "mid":
+            items, stage = ocr.read_raw(path, True, "mid", time.monotonic() + MID_SECONDS)
+        else:
+            items, stage = ocr.read_raw(path, False, "cheap", time.monotonic() + MAX_SECONDS)
         lines_geo = ocr.group_lines_geo(items)
         texts = [t for t, _, _ in lines_geo]
         found = extract_date(texts, [(cy, h) for _, cy, h in lines_geo])
@@ -78,14 +91,16 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
 
     @app.post("/api/scan")
     def scan(image: UploadFile = File(...), barcode: str = Form(""), shot: str = Form("full")):
-        """shot: "first" = 스캐너 직후 1차 촬영(싼 모드), "second" = 날짜 면 재촬영, "full" = 그 외 (전체 재시도)."""
+        """shot: "first" = 스캐너 직후 1차 촬영(싼 모드), "mid" = 중간 재시도(erode5 까지),
+        "second" = 하위 호환으로 "full" 과 동일 취급, "full" = 그 외 (전체 재시도)."""
         t0 = time.time()
         suffix = os.path.splitext(image.filename or "")[1] or ".jpg"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
             f.write(image.file.read())
             tmp = f.name
+        mode = "cheap" if shot == "first" else "mid" if shot == "mid" else "full"
         try:
-            row = run_ocr(tmp, "cheap" if shot == "first" else "full")
+            row = run_ocr(tmp, mode)
         finally:
             os.unlink(tmp)
         verdict = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)

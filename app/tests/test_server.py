@@ -41,6 +41,8 @@ def test_scan_first_shot_uses_cheap_mode(client, monkeypatch):
     monkeypatch.setattr(server, "run_ocr", fake)
     r = client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")}, data={"shot": "first"})
     assert seen["mode"] == "cheap" and r.json()["final_date"] == "NONE" and r.json()["shot"] == "first"
+    client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")}, data={"shot": "mid"})
+    assert seen["mode"] == "mid"
     client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")}, data={"shot": "second"})
     assert seen["mode"] == "full"
 

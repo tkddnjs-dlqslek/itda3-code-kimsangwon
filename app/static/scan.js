@@ -1,17 +1,19 @@
 import { DEFAULTS, initial, step, toGray, meanAbsDiff } from "./motion.js";
 import { parseGS1, productKey } from "./gs1.js";
+import { nextShot } from "./retry.js";
 
 // 연속 스캔 (09-30): 검수원이 상품을 카메라 앞에서 돌리는 동안
 //   바코드는 브라우저가 0.5초마다 찾고 (GS1 2D 바코드에 유효기한이 있으면 그걸로 끝),
-//   소비기한은 1.2초마다 서버 싼 모드(1단계, 2단계, 검출기 교체)로 판독한다.
-// 둘 다 잡히고 신뢰도가 기준 이상이면 완료음과 함께 자동 저장, 낮으면 그때만 확인 화면을 연다.
-// 싼 모드로 3번 못 읽으면 전체 재시도 1번, 그래도 없으면 확인 화면에서 직접 입력.
+//   소비기한은 멎은 프레임에서만 1.2초마다 서버로 판독한다.
+// 둘 다 잡히고 신뢰도가 기준 이상이면 완료음과 함께 자동 저장한다. 낮으면(needs_review) 확인 화면을 열고,
+// 확인 버튼을 눌러도 언제든 연다. 못 읽어도 멈추지 않고 first, first, mid, full 순서를 계속 돈다
+// (nextShot, ./retry.js). full 은 무거워서 직전 full 로부터 6초 안이면 mid 로 대신한다.
 
 const $ = (id) => document.getElementById(id);
 const video = $("video"), small = $("small"), full = $("full");
 const sctx = small.getContext("2d", { willReadFrequently: true });
 const reader = new ZXingBrowser.BrowserMultiFormatReader();
-const OCR_EVERY_MS = 1200, CHEAP_TRIES = 3;
+const OCR_EVERY_MS = 1200;
 
 let state = initial(), prev = null, base = null;
 let formOpen = false, inflight = false, cooldown = false, ticks = 0;
@@ -20,7 +22,7 @@ let lastSaved = "";                  // 방금 저장한 바코드 (치우기 �
 let audio = null;
 
 const newItem = () => ({ barcode: "", productName: "", date: null, source: "", ocr: null,
-  tries: 0, fullTried: false, failed: false, startedAt: performance.now(), lastOcr: 0 });
+  tries: 0, lastFullAt: null, gotWith: null, startedAt: performance.now(), lastOcr: 0 });
 
 function beep() {
   try {
@@ -70,13 +72,22 @@ async function setBarcode(text) {
   render();
 }
 
-async function ocrFrame(shot) {
+// 실패가 쌓일수록 안내를 바꾼다: 2회부터 날짜 면 유도, 4회(한 바퀴, full 까지 실패)부터 직접 입력 유도.
+function hintFor(item) {
+  if (item.date) return "";
+  if (item.tries >= 4) return "안 읽히면 확인 버튼으로 직접 입력";
+  if (item.tries >= 2) return "날짜 면을 카메라에 보여 주세요";
+  return "";
+}
+
+async function ocrFrame(forcedShot) {
   if (inflight || !cur) return;
   inflight = true;
   const item = cur;
-  item.lastOcr = performance.now();
-  if (!shot) shot = item.tries >= CHEAP_TRIES && !item.fullTried ? "second" : "first";
-  if (shot !== "first") item.fullTried = true;
+  const now = performance.now();
+  item.lastOcr = now;
+  const shot = forcedShot || nextShot(item.tries, item.lastFullAt, now);
+  if (shot === "full") item.lastFullAt = now;
   try {
     grabFull();
     const blob = await new Promise((resolve) => full.toBlob(resolve, "image/jpeg", 0.9));
@@ -87,12 +98,13 @@ async function ocrFrame(shot) {
     if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
     const data = await res.json();
     if (data.final_date !== "NONE") {
-      if (!item.date) { item.date = { year: data.year, month: data.month, day: data.day }; item.source = "ocr"; item.ocr = data; }
+      if (!item.date) { item.date = { year: data.year, month: data.month, day: data.day }; item.source = "ocr"; item.ocr = data; item.gotWith = shot; }
     } else {
       item.tries += 1;
-      if (item.fullTried && shot !== "first") item.failed = true;
     }
-    $("msg").textContent = `판독 ${data.elapsed_ms}ms (${data.stage})`;
+    const base = `판독 ${data.elapsed_ms}ms (${data.stage})`;
+    const hint = hintFor(item);
+    $("msg").textContent = hint ? `${base}. ${hint}` : base;
   } catch (e) {
     $("msg").textContent = `판독 실패: ${e.message}`;
   } finally {
@@ -123,7 +135,8 @@ function tick() {
   }
   if (!cur) cur = newItem();
   if (!cur.barcode && ticks % 2 === 0) { const text = readBarcodeText(); if (text) setBarcode(text); }
-  if (!cur.date && !cur.failed && performance.now() - cur.lastOcr > OCR_EVERY_MS) ocrFrame();
+  // 손이 움직이는 중인 프레임은 판독에 쓰지 않는다: 흔들린 사진은 시도 횟수만 낭비한다
+  if (!cur.date && diff < DEFAULTS.stillT && performance.now() - cur.lastOcr > OCR_EVERY_MS) ocrFrame();
   render();
   maybeComplete();
 }
@@ -144,10 +157,9 @@ function maybeComplete() {
   if (!cur || formOpen) return;
   if (cur.date && cur.barcode) {
     if (cur.source === "barcode" || (cur.ocr && !cur.ocr.needs_review)) autoSave();
-    else openForm();
-  } else if (cur.failed) {
-    openForm();                       // 소비기한을 끝내 못 읽음: 직접 입력
+    else openForm();                  // (가) 날짜는 읽혔지만 확인이 필요함
   }
+  // (나) 사용자가 "확인 화면 열기" 버튼을 눌렀을 때는 그 클릭 핸들러가 직접 openForm() 을 부른다
 }
 
 const seconds = () => Math.round((performance.now() - cur.startedAt) / 100) / 10;
@@ -158,7 +170,7 @@ function itemFrom(date, edited) {
     barcode: cur.barcode, product_name: cur.productName, year: date.year, month: date.month, day: date.day,
     confidence: cur.source === "barcode" ? 1 : (o ? o.confidence : null),
     needs_review: cur.source === "barcode" ? false : (o ? o.needs_review : true),
-    edited, second_shot: cur.fullTried, stage: cur.source === "barcode" ? "gs1" : (o ? o.stage : ""),
+    edited, second_shot: !!cur.gotWith && cur.gotWith !== "first", stage: cur.source === "barcode" ? "gs1" : (o ? o.stage : ""),
     evidence: cur.source === "barcode" ? ["GS1 바코드 유효기한"] : (o ? o.evidence : []),
     mode: "scan", seconds: seconds(),
   };
