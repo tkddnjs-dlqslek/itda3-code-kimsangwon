@@ -30,7 +30,15 @@ $("run").onclick = async () => {
   const body = new FormData();
   selected.forEach((f, i) => body.append("images", f, f.name || `photo${i}.jpg`));
   body.append("product_name", $("pname").value.trim());
-  $("run").disabled = true; $("msg").textContent = "판독 중";
+  // 진행 표시: 버튼 글자와 안내 줄에 경과 초를 1초마다 찍는다 (서버는 사진당 1~8초, 2단계 판독)
+  const n = selected.length, t0 = performance.now();
+  $("run").disabled = true; $("result").hidden = true;
+  const tickMsg = () => {
+    const sec = Math.round((performance.now() - t0) / 1000);
+    $("run").textContent = `판독 중 ${sec}초`;
+    $("msg").textContent = `사진 ${n}장 판독 중입니다. 1차는 빠르게 훑고 날짜가 없는 사진만 정밀 판독합니다. 최대 ${n * 8 + n * 2}초`;
+  };
+  tickMsg(); const timer = setInterval(tickMsg, 1000);
   try {
     const res = await fetch("/api/verify_listing", { method: "POST", body });
     if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
@@ -39,7 +47,7 @@ $("run").onclick = async () => {
   } catch (e) {
     $("msg").textContent = `검증 실패: ${e.message}`;
   } finally {
-    $("run").disabled = false;
+    clearInterval(timer); $("run").textContent = "검증"; $("run").disabled = false;
   }
 };
 
