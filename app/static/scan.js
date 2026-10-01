@@ -1,6 +1,6 @@
-import { DEFAULTS, initial, step, toGray, meanAbsDiff } from "./motion.js";
-import { parseGS1, productKey } from "./gs1.js";
-import { nextShot, barcodeChange } from "./retry.js";
+import { DEFAULTS, initial, step, toGray, meanAbsDiff } from "./motion.js?v=1790837879";
+import { parseGS1, productKey } from "./gs1.js?v=1790837879";
+import { nextShot, barcodeChange } from "./retry.js?v=1790837879";
 
 // 연속 스캔 (09-30): 검수원이 상품을 카메라 앞에서 돌리는 동안
 //   바코드는 브라우저가 0.5초마다 찾고 (GS1 2D 바코드에 유효기한이 있으면 그걸로 끝),
