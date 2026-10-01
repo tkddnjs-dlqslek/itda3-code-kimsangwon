@@ -1,24 +1,38 @@
-// 중고거래 기한 검증 화면: 사진 1장을 /api/verify 로 보내고 allow, block, review 를 크게 보여 준다.
+// 중고거래 기한 검증 화면: 게시글 사진 최대 5장을 /api/verify_listing 으로 보내고 allow, block, review 를 보여 준다.
 const $ = (id) => document.getElementById(id);
 const TITLE = { allow: "등록 가능", block: "등록 불가", review: "운영자 확인 필요" };
+const MAX_PHOTOS = 5;
+let selected = [];
 
-$("photo").onchange = () => {
-  const f = $("photo").files[0];
-  if (!f) { $("preview").hidden = true; return; }
-  $("preview").src = URL.createObjectURL(f); $("preview").hidden = false;
-  $("result").hidden = true; $("msg").textContent = "";
+$("photoFiles").onchange = () => {
+  const files = Array.from($("photoFiles").files || []);
+  if (files.length > MAX_PHOTOS) {
+    $("msg").textContent = "최대 5장까지 올릴 수 있습니다";
+    selected = files.slice(0, MAX_PHOTOS);
+  } else {
+    $("msg").textContent = "";
+    selected = files;
+  }
+  $("thumbs").replaceChildren(...selected.map((f) => {
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(f);
+    img.alt = f.name;
+    return img;
+  }));
+  $("result").hidden = true;
 };
 
 $("run").onclick = async () => {
-  const f = $("photo").files[0];
-  if (!f) { $("msg").textContent = "소비기한 표시 부분 사진을 먼저 선택해 주세요."; return; }
+  if (selected.length === 0) {
+    $("msg").textContent = "소비기한 표시 부분이 보이는 사진을 먼저 선택해 주세요.";
+    return;
+  }
   const body = new FormData();
-  body.append("image", f, f.name || "photo.jpg");
-  body.append("min_months", $("minMonths").value || "0");
+  selected.forEach((f, i) => body.append("images", f, f.name || `photo${i}.jpg`));
   body.append("product_name", $("pname").value.trim());
   $("run").disabled = true; $("msg").textContent = "판독 중";
   try {
-    const res = await fetch("/api/verify", { method: "POST", body });
+    const res = await fetch("/api/verify_listing", { method: "POST", body });
     if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
     show(await res.json());
     $("msg").textContent = "";
@@ -29,14 +43,33 @@ $("run").onclick = async () => {
   }
 };
 
+$("modalClose").onclick = () => { $("modal").hidden = true; };
+
+function openModal(text) {
+  $("modalText").textContent = text;
+  $("modal").hidden = false;
+}
+
 function show(d) {
   const r = $("result");
   r.hidden = false;
   r.className = `card verdict ${d.verdict}`;
   $("title").textContent = `${TITLE[d.verdict] || d.verdict}${d.product_name ? `: ${d.product_name}` : ""}`;
   $("reason").textContent = d.reason;
-  const months = d.months_left == null ? "계산 불가" : `${d.months_left}개월`;
-  const conf = d.confidence == null ? "" : `, 신뢰도 ${Math.round(d.confidence * 100)}%`;
-  $("detail").textContent = `읽은 소비기한 ${d.final_date}, 남은 기간 ${months}, 기준 ${d.min_months}개월${conf}, ${d.elapsed_ms}ms (${d.stage})`;
-  $("evidence").replaceChildren(...(d.evidence || []).slice(0, 5).map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+  if (d.min_photo != null && d.deadline != null) {
+    $("detail").textContent = `가장 빠른 소비기한 ${d.deadline} (사진 ${d.min_photo + 1}), 남은 기간 ${d.months_left}개월, 소요 ${d.elapsed_ms}ms`;
+  } else {
+    $("detail").textContent = `소요 ${d.elapsed_ms}ms`;
+  }
+  $("photos").replaceChildren(...(d.photos || []).map((p) => {
+    const text = p.final_date === "NONE"
+      ? `사진 ${p.index + 1}: 소비기한 없음`
+      : `사진 ${p.index + 1}: ${p.final_date} (신뢰도 ${p.confidence == null ? "확인 불가" : `${Math.round(p.confidence * 100)}%`})`;
+    return Object.assign(document.createElement("li"), { textContent: text });
+  }));
+  if (d.verdict === "block") {
+    openModal(`소비기한(유통기한)이 ${d.min_months}개월 이상 남을 때만 업로드 가능합니다`);
+  } else if (d.verdict === "review" && d.min_photo == null) {
+    openModal("소비기한 표시 부분이 보이는 사진을 추가해 주십시오");
+  }
 }

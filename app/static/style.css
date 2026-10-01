@@ -45,3 +45,8 @@ tr.moved td { color:var(--dim); text-decoration:line-through; }
 .verdict.block { border-left: 6px solid #b71c1c; }
 .verdict.review { border-left: 6px solid #616161; }
 .verdict h2 { margin-top: 0; }
+
+/* 게시글 다중 사진 검증 (10-01) */
+.modal { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:16px; }
+#thumbs { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+#thumbs img { width:80px; height:80px; object-fit:cover; border-radius:6px; }

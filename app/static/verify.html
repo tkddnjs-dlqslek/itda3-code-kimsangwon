@@ -13,12 +13,11 @@
   </header>
   <main>
     <section class="card">
-      <p class="msg">판매자가 소비기한 표시 부분을 찍어 올리면 남은 기간을 읽어 등록 가능 여부를 판정합니다. 사진은 저장하지 않습니다.</p>
+      <p class="msg">판매자가 올리는 게시글 사진처럼, 소비기한 표시 부분이 보이는 사진을 포함해 최대 5장을 올리면 남은 기간을 읽어 등록 가능 여부를 판정합니다. 사진은 저장하지 않습니다.</p>
       <label>상품명 (선택)</label><input id="pname" placeholder="예: 비타민C 1000 60정">
-      <label>기준 개월 수</label><input id="minMonths" type="number" min="0" max="60" value="0" inputmode="numeric">
-      <p class="msg">0 이면 소비기한 내 여부만 확인합니다(2025-05 식약처 기준). 시범사업 초기 기준은 6 이었습니다.</p>
-      <label>소비기한 표시 사진</label><input id="photo" type="file" accept="image/*" capture="environment">
-      <img id="preview" alt="" hidden style="max-width:100%;border-radius:8px;margin-top:8px">
+      <label>게시글 사진</label><input id="photoFiles" type="file" accept="image/*" multiple>
+      <p class="msg">최대 5장. 소비기한 표시 부분이 보이는 사진을 포함해 주십시오.</p>
+      <div id="thumbs"></div>
       <div class="bar"><button class="primary" id="run">검증</button></div>
       <p class="msg" id="msg"></p>
     </section>
@@ -26,9 +25,10 @@
       <h2 id="title"></h2>
       <p class="phase" id="reason"></p>
       <p class="msg" id="detail"></p>
-      <ul class="evidence" id="evidence"></ul>
+      <ul class="evidence" id="photos"></ul>
     </section>
   </main>
+  <div id="modal" class="modal" hidden><div class="card"><p id="modalText"></p><button id="modalClose" class="primary">확인</button></div></div>
   <script type="module" src="verify.js"></script>
 </body>
 </html>
