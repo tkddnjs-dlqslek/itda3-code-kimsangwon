@@ -197,3 +197,54 @@ def test_verify_listing_review_when_all_none(client, monkeypatch):
 def test_verify_listing_rejects_more_than_five(client):
     r = client.post("/api/verify_listing", files=_photos(6))
     assert r.status_code == 422
+
+
+def test_verify_listing_full_pass_only_for_none_photos(client, monkeypatch):
+    calls = []
+    cheap_n = {"n": 0}
+
+    def fake(path, mode="full"):
+        calls.append((os.path.basename(path), mode))
+        if mode == "cheap":
+            i = cheap_n["n"]
+            cheap_n["n"] += 1
+            if i == 0:
+                return dict(STUB, year="2099", month="12", day="31", final_date="2099-12-31")
+            return dict(STUB, year="NONE", month="NONE", day="NONE", final_date="NONE", stage="fail", texts=[])
+        return dict(STUB, year="2030", month="05", day="10", final_date="2030-05-10")
+
+    monkeypatch.setattr(server, "run_ocr", fake)
+    r = client.post("/api/verify_listing", files=_photos(2))
+    body = r.json()
+    assert sum(1 for _, mode in calls if mode == "full") == 1
+    assert body["passes"] == 2
+    assert body["photos"][0]["final_date"] == "2099-12-31" and body["photos"][0]["mode"] == "cheap"
+    assert body["photos"][1]["final_date"] == "2030-05-10" and body["photos"][1]["mode"] == "full"
+
+
+def test_verify_listing_block_in_cheap_pass_skips_full(client, monkeypatch):
+    calls = []
+
+    def fake(path, mode="full"):
+        calls.append(mode)
+        return dict(STUB)   # 2026-09-25, cheap 모드에서도 이미 지난 날짜
+
+    monkeypatch.setattr(server, "run_ocr", fake)
+    r = client.post("/api/verify_listing", files=_photos(1))
+    body = r.json()
+    assert "full" not in calls
+    assert body["verdict"] == "block" and body["passes"] == 1
+
+
+def test_verify_listing_all_none_tries_full_then_reviews(client, monkeypatch):
+    calls = []
+
+    def fake(path, mode="full"):
+        calls.append(mode)
+        return dict(STUB, year="NONE", month="NONE", day="NONE", final_date="NONE", stage="fail", texts=[])
+
+    monkeypatch.setattr(server, "run_ocr", fake)
+    r = client.post("/api/verify_listing", files=_photos(2))
+    body = r.json()
+    assert calls.count("full") == 2
+    assert body["verdict"] == "review" and body["passes"] == 2

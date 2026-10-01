@@ -139,35 +139,72 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
     @app.post("/api/verify_listing")
     def verify_listing_photos(images: list[UploadFile] = File(...), product_name: str = Form("")):
         """중고거래 게시글용: 사진 최대 5장(당근, 번개장터처럼 올리는 게시글 사진)으로 등록 가능 여부를 판정한다.
-        날짜를 읽은 사진들 중 가장 빠른 소비기한을 기준으로 삼는다(최저 기한, verify.listing_verdict). 저장하지 않는다."""
+        날짜를 읽은 사진들 중 가장 빠른 소비기한을 기준으로 삼는다(최저 기한, verify.listing_verdict). 저장하지 않는다.
+
+        2단계 판독으로 지연을 줄인다.
+        1단계: 모든 사진을 싼 모드(cheap)로 먼저 읽고 그 결과로 listing_verdict 를 계산한다.
+        이미 등록 불가(block)로 확정되면 여기서 끝낸다(passes=1). 더 읽어서 날짜를 더 찾아내도
+        최저 기한은 내려갈 수만 있지 올라갈 수는 없으므로, block 이면 2단계를 돌릴 이유가 없다.
+        block 이 아니면 1단계에서 연도나 월을 못 읽은(NONE) 사진만 전체 모드(full)로 다시 읽어
+        그 사진의 결과만 교체한 뒤 최종 판정을 내린다(passes=2)."""
         if len(images) > 5:
             raise HTTPException(status_code=422, detail="사진은 최대 5장까지 올릴 수 있습니다")
         t0 = time.time()
-        photos = []
-        results = []
-        for i, image in enumerate(images):
-            p0 = time.time()
-            suffix = os.path.splitext(image.filename or "")[1] or ".jpg"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-                f.write(image.file.read())
-                tmp = f.name
+
+        def read_one(tmp: str, mode: str) -> tuple[dict, dict]:
             try:
-                row = run_ocr(tmp, "full")
+                row = run_ocr(tmp, mode)
                 assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)
-            except Exception:                 # 이미지가 아니거나 디코딩 실패: 500 대신 날짜 없음 + 운영자 확인으로
+            except Exception:             # 이미지가 아니거나 디코딩 실패: 500 대신 날짜 없음 + 운영자 확인으로
                 row = {"year": "NONE", "month": "NONE", "day": "NONE", "final_date": "NONE", "stage": "error", "texts": []}
                 assessed = {"confidence": None, "needs_review": True, "bucket": "error"}
-            finally:
+            return row, assessed
+
+        def to_photo(i: int, row: dict, assessed: dict, mode: str, elapsed_ms: int) -> dict:
+            return {"index": i, "year": row["year"], "month": row["month"], "day": row["day"],
+                    "final_date": row["final_date"], "confidence": assessed["confidence"],
+                    "needs_review": assessed["needs_review"], "stage": row["stage"],
+                    "evidence": row["texts"][:5], "elapsed_ms": elapsed_ms, "mode": mode}
+
+        def to_result(i: int, row: dict, assessed: dict) -> dict:
+            return {"index": i, "year": row["year"], "month": row["month"], "day": row["day"],
+                    "needs_review": assessed["needs_review"], "confidence": assessed["confidence"]}
+
+        tmps: list[str] = []
+        try:
+            for image in images:
+                suffix = os.path.splitext(image.filename or "")[1] or ".jpg"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                    f.write(image.file.read())
+                    tmps.append(f.name)
+
+            photos = []
+            results = []
+            for i, tmp in enumerate(tmps):
+                p0 = time.time()
+                row, assessed = read_one(tmp, "cheap")
+                photos.append(to_photo(i, row, assessed, "cheap", int((time.time() - p0) * 1000)))
+                results.append(to_result(i, row, assessed))
+
+            lv = verify.listing_verdict(results, datetime.date.today(), MIN_MONTHS)
+            if lv["verdict"] == "block":
+                return {**lv, "min_months": MIN_MONTHS, "product_name": product_name, "photos": photos,
+                        "passes": 1, "elapsed_ms": int((time.time() - t0) * 1000)}
+
+            for i, tmp in enumerate(tmps):
+                if results[i]["year"] != "NONE" and results[i]["month"] != "NONE":
+                    continue
+                p0 = time.time()
+                row, assessed = read_one(tmp, "full")
+                photos[i] = to_photo(i, row, assessed, "full", int((time.time() - p0) * 1000))
+                results[i] = to_result(i, row, assessed)
+
+            lv = verify.listing_verdict(results, datetime.date.today(), MIN_MONTHS)
+            return {**lv, "min_months": MIN_MONTHS, "product_name": product_name, "photos": photos,
+                    "passes": 2, "elapsed_ms": int((time.time() - t0) * 1000)}
+        finally:
+            for tmp in tmps:
                 os.unlink(tmp)
-            photos.append({"index": i, "year": row["year"], "month": row["month"], "day": row["day"],
-                           "final_date": row["final_date"], "confidence": assessed["confidence"],
-                           "needs_review": assessed["needs_review"], "stage": row["stage"],
-                           "evidence": row["texts"][:5], "elapsed_ms": int((time.time() - p0) * 1000)})
-            results.append({"index": i, "year": row["year"], "month": row["month"], "day": row["day"],
-                            "needs_review": assessed["needs_review"], "confidence": assessed["confidence"]})
-        lv = verify.listing_verdict(results, datetime.date.today(), MIN_MONTHS)
-        return {**lv, "min_months": MIN_MONTHS, "product_name": product_name, "photos": photos,
-                "elapsed_ms": int((time.time() - t0) * 1000)}
 
     @app.get("/api/product/{barcode}")
     def product(barcode: str):
