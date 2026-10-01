@@ -55,3 +55,43 @@ def test_review_when_year_or_month_missing():
 def test_review_when_low_confidence_even_if_enough():
     v = verify.verdict("2027", "06", "01", D(2026, 10, 1), 6, True)
     assert v["verdict"] == "review" and v["months_left"] == 8 and "신뢰도" in v["reason"]
+
+
+def photo(index, year="NONE", month="NONE", day="NONE", needs_review=False, confidence=0.95):
+    return {"index": index, "year": year, "month": month, "day": day,
+            "needs_review": needs_review, "confidence": confidence}
+
+
+def test_listing_review_when_none_dated():
+    results = [photo(0), photo(1)]
+    v = verify.listing_verdict(results, D(2026, 10, 1), 6)
+    assert v["verdict"] == "review" and v["min_photo"] is None
+    assert "사진을 추가" in v["reason"]
+
+
+def test_listing_allow_when_one_dated_enough():
+    results = [photo(0), photo(1, "2027", "06", "01")]
+    v = verify.listing_verdict(results, D(2026, 10, 1), 6)
+    assert v["verdict"] == "allow" and v["min_photo"] == 1 and v["months_left"] == 8
+
+
+def test_listing_blocks_on_shortest_deadline():
+    results = [photo(0, "2099", "12", "31"), photo(1, "2027", "01", "01")]
+    v = verify.listing_verdict(results, D(2026, 10, 1), 6)
+    assert v["verdict"] == "block" and v["min_photo"] == 1
+    assert "6개월" in v["reason"]
+    assert [d["index"] for d in v["dates"]] == [1, 0]
+
+
+def test_listing_review_when_min_photo_low_confidence():
+    results = [photo(0, "2099", "12", "31"), photo(1, "2027", "01", "01", needs_review=True)]
+    v = verify.listing_verdict(results, D(2026, 10, 1), 6)
+    assert v["verdict"] == "review" and v["min_photo"] == 1 and "신뢰도" in v["reason"]
+
+
+def test_listing_five_photos_mixed():
+    results = [photo(0), photo(1, "2099", "01", "01"), photo(2, "2027", "02", "NONE"),
+               photo(3, "2026", "11", "01"), photo(4)]
+    v = verify.listing_verdict(results, D(2026, 10, 1), 6)
+    assert v["min_photo"] == 3 and v["verdict"] == "block"
+    assert sorted(d["index"] for d in v["dates"]) == [1, 2, 3]

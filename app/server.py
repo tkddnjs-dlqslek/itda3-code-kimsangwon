@@ -30,6 +30,8 @@ DB_PATH = os.path.join(HERE, ".data", "items.db")
 STATIC = os.path.join(HERE, "static")
 MAX_SECONDS = 8.0            # 장당 상한. 단계 사이에서만 확인하므로 실제로는 한 단계 길이만큼 넘을 수 있다
 MID_SECONDS = 4.0            # 중간 재시도(mid) 상한. 아래 run_ocr 의 mode="mid" 설명 참고
+# 플랫폼 설정값. 식약처 시범사업 초기 기준(2024-05) 6개월, 2025-05 부터 소비기한 내로 완화. 발표와 시연은 6 으로
+MIN_MONTHS = 6
 _ocr_lock = threading.Lock()     # predict_one 은 전역 상태를 쓰고 CPU 를 다 쓰므로 한 번에 하나만
 _db_lock = threading.Lock()
 
@@ -133,6 +135,39 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
         return {"year": row["year"], "month": row["month"], "day": row["day"], "final_date": row["final_date"],
                 **v, **assessed, "stage": row["stage"], "evidence": row["texts"][:12],
                 "min_months": min_months, "product_name": product_name, "elapsed_ms": int((time.time() - t0) * 1000)}
+
+    @app.post("/api/verify_listing")
+    def verify_listing_photos(images: list[UploadFile] = File(...), product_name: str = Form("")):
+        """중고거래 게시글용: 사진 최대 5장(당근, 번개장터처럼 올리는 게시글 사진)으로 등록 가능 여부를 판정한다.
+        날짜를 읽은 사진들 중 가장 빠른 소비기한을 기준으로 삼는다(최저 기한, verify.listing_verdict). 저장하지 않는다."""
+        if len(images) > 5:
+            raise HTTPException(status_code=422, detail="사진은 최대 5장까지 올릴 수 있습니다")
+        t0 = time.time()
+        photos = []
+        results = []
+        for i, image in enumerate(images):
+            p0 = time.time()
+            suffix = os.path.splitext(image.filename or "")[1] or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                f.write(image.file.read())
+                tmp = f.name
+            try:
+                row = run_ocr(tmp, "full")
+                assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)
+            except Exception:                 # 이미지가 아니거나 디코딩 실패: 500 대신 날짜 없음 + 운영자 확인으로
+                row = {"year": "NONE", "month": "NONE", "day": "NONE", "final_date": "NONE", "stage": "error", "texts": []}
+                assessed = {"confidence": None, "needs_review": True, "bucket": "error"}
+            finally:
+                os.unlink(tmp)
+            photos.append({"index": i, "year": row["year"], "month": row["month"], "day": row["day"],
+                           "final_date": row["final_date"], "confidence": assessed["confidence"],
+                           "needs_review": assessed["needs_review"], "stage": row["stage"],
+                           "evidence": row["texts"][:5], "elapsed_ms": int((time.time() - p0) * 1000)})
+            results.append({"index": i, "year": row["year"], "month": row["month"], "day": row["day"],
+                            "needs_review": assessed["needs_review"], "confidence": assessed["confidence"]})
+        lv = verify.listing_verdict(results, datetime.date.today(), MIN_MONTHS)
+        return {**lv, "min_months": MIN_MONTHS, "product_name": product_name, "photos": photos,
+                "elapsed_ms": int((time.time() - t0) * 1000)}
 
     @app.get("/api/product/{barcode}")
     def product(barcode: str):

@@ -154,3 +154,46 @@ def test_verify_uses_full_mode(client, monkeypatch):
     monkeypatch.setattr(server, "run_ocr", fake)
     client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
     assert seen["mode"] == "full"
+
+
+def _photos(n, name="a.jpg"):
+    return [("images", (f"{name[:-4]}{i}.jpg", b"fake", "image/jpeg")) for i in range(n)]
+
+
+def test_verify_listing_allows_with_two_good_photos(client, monkeypatch):
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": dict(STUB, year="2099", month="12", day="31", final_date="2099-12-31"))
+    r = client.post("/api/verify_listing", files=_photos(2), data={"product_name": "비타민C"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verdict"] == "allow" and body["min_months"] == 6 and body["product_name"] == "비타민C"
+    assert len(body["photos"]) == 2 and body["min_photo"] in (0, 1)
+
+
+def test_verify_listing_blocks_on_shortest_photo(client, monkeypatch):
+    calls = []
+
+    def fake(path, mode="full"):
+        calls.append(path)
+        if len(calls) == 1:
+            return dict(STUB)   # 2026-09-25, 오늘(테스트 실행일) 기준 이미 지남
+        return dict(STUB, year="2099", month="12", day="31", final_date="2099-12-31")
+
+    monkeypatch.setattr(server, "run_ocr", fake)
+    r = client.post("/api/verify_listing", files=_photos(2))
+    body = r.json()
+    assert body["verdict"] == "block" and body["min_photo"] == 0
+    assert "6개월" in body["reason"]
+    assert len(calls) == 2
+
+
+def test_verify_listing_review_when_all_none(client, monkeypatch):
+    monkeypatch.setattr(server, "run_ocr", lambda path, mode="full": dict(STUB, year="NONE", month="NONE", day="NONE", final_date="NONE", stage="fail", texts=[]))
+    r = client.post("/api/verify_listing", files=_photos(3))
+    body = r.json()
+    assert body["verdict"] == "review" and body["min_photo"] is None
+    assert "사진을 추가" in body["reason"]
+
+
+def test_verify_listing_rejects_more_than_five(client):
+    r = client.post("/api/verify_listing", files=_photos(6))
+    assert r.status_code == 422
