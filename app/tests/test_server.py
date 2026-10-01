@@ -248,3 +248,29 @@ def test_verify_listing_all_none_tries_full_then_reviews(client, monkeypatch):
     body = r.json()
     assert calls.count("full") == 2
     assert body["verdict"] == "review" and body["passes"] == 2
+
+
+def test_scan_vs_verify_threshold_difference(client, monkeypatch):
+    """scan은 0.90, verify는 0.80 임계값을 사용해야 함.
+    retry|full|nokw|clear 버킷값이 0.8133인 경우:
+    - scan은 0.8133 < 0.90 → needs_review=True
+    - verify는 0.8133 >= 0.80 → needs_review=False
+    """
+    stub_retry = dict(STUB, stage="erode5", year="2099", month="12", day="31", final_date="2099-12-31", texts=["2099.12.31"])
+
+    def fake(path, mode="full"):
+        return stub_retry
+
+    monkeypatch.setattr(server, "run_ocr", fake)
+
+    # scan: 기본값 0.90 사용, bucket retry|full|nokw|clear에서 needs_review 판정 차이 확인
+    r_scan = client.post("/api/scan", files={"image": ("frame.jpg", b"fake", "image/jpeg")})
+    scan_body = r_scan.json()
+    # 테이블의 retry|full|nokw|clear 값이 0.8133이면 0.90 미만이므로 needs_review=True
+    assert scan_body["bucket"] == "retry|full|nokw|clear"
+
+    # verify: 0.80 사용, 같은 bucket에서 verdict="allow"
+    r_verify = client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
+    verify_body = r_verify.json()
+    # 0.80 이상이면 needs_review=False, verdict="allow"
+    assert verify_body["verdict"] == "allow"

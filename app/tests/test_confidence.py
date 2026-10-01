@@ -74,3 +74,10 @@ def test_tool_replays_gold_predictions():
     rows = tool.load_rows()
     assert len(rows) == 1000
     assert sum(ok for _, _, ok in rows) == 919
+
+
+def test_needs_review_threshold_parameter():
+    # 0.81은 기본값 0.90보다 작으므로 review 필요
+    assert confidence.needs_review("retry|full|nokw|clear", 0.81) is True
+    # 0.81은 0.80 이상이므로 review 불필요
+    assert confidence.needs_review("retry|full|nokw|clear", 0.81, threshold=0.80) is False

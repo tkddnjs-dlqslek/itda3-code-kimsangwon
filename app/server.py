@@ -32,6 +32,7 @@ MAX_SECONDS = 8.0            # 장당 상한. 단계 사이에서만 확인하�
 MID_SECONDS = 4.0            # 중간 재시도(mid) 상한. 아래 run_ocr 의 mode="mid" 설명 참고
 # 플랫폼 설정값. 식약처 시범사업 초기 기준(2024-05) 6개월, 2025-05 부터 소비기한 내로 완화. 발표와 시연은 6 으로
 MIN_MONTHS = 6
+LISTING_THRESHOLD = 0.80  # 중고거래 검증용. 2폴드 실측: 0.90 → 자동 통과 72.8~86.0%, 정답률 98.1~96.3% / 0.80 → 자동 통과 88.4~91.0%, 정답률 95.0~95.6%. 플랫폼 사후 모니터링이 남아 있어 0.80 채택 (10-01)
 _ocr_lock = threading.Lock()     # predict_one 은 전역 상태를 쓰고 CPU 를 다 쓰므로 한 번에 하나만
 _db_lock = threading.Lock()
 
@@ -123,7 +124,7 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
             tmp = f.name
         try:
             row = run_ocr(tmp, "full")
-            assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)
+            assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table, threshold=LISTING_THRESHOLD)
         except Exception:                     # 이미지가 아니거나 디코딩 실패: 500 대신 운영자 확인으로
             row = {"year": "NONE", "month": "NONE", "day": "NONE", "final_date": "NONE", "stage": "error", "texts": []}
             assessed = {"confidence": None, "needs_review": True, "bucket": "error"}
@@ -154,7 +155,7 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
         def read_one(tmp: str, mode: str) -> tuple[dict, dict]:
             try:
                 row = run_ocr(tmp, mode)
-                assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table)
+                assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table, threshold=LISTING_THRESHOLD)
             except Exception:             # 이미지가 아니거나 디코딩 실패: 500 대신 날짜 없음 + 운영자 확인으로
                 row = {"year": "NONE", "month": "NONE", "day": "NONE", "final_date": "NONE", "stage": "error", "texts": []}
                 assessed = {"confidence": None, "needs_review": True, "bucket": "error"}
