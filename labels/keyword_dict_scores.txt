@@ -1,0 +1,26 @@
+전체 줄 재구성 일치율: 1311/3000 = 0.4370
+
+[hybrid] 줄 재구성 일치율: 445/1000 = 0.4450
+[hybrid] OLD 가 저장된 final_date 재현율: 0.9860
+[hybrid] OLD exact=0.8740 field=0.9097 (year 0.9110 month 0.9180 day 0.9000)
+[hybrid] NEW exact=0.8740 field=0.9097 (year 0.9110 month 0.9180 day 0.9000)
+[hybrid] 정답으로 바뀜 (0건): 
+[hybrid] 오답으로 바뀜 (0건): 
+[hybrid] 사전 교정이 적용된 줄 수: 21
+
+[ko] 줄 재구성 일치율: 429/1000 = 0.4290
+[ko] OLD 가 저장된 final_date 재현율: 0.9850
+[ko] OLD exact=0.8180 field=0.8733 (year 0.8780 month 0.8860 day 0.8560)
+[ko] NEW exact=0.8180 field=0.8740 (year 0.8780 month 0.8870 day 0.8570)
+[ko] 정답으로 바뀜 (0건): 
+[ko] 오답으로 바뀜 (0건): 
+[ko] 사전 교정이 적용된 줄 수: 27
+
+[merge] 줄 재구성 일치율: 437/1000 = 0.4370
+[merge] OLD 가 저장된 final_date 재현율: 0.9850
+[merge] OLD exact=0.8670 field=0.9077 (year 0.9110 month 0.9160 day 0.8960)
+[merge] NEW exact=0.8670 field=0.9077 (year 0.9110 month 0.9160 day 0.8960)
+[merge] 정답으로 바뀜 (0건): 
+[merge] 오답으로 바뀜 (0건): 
+[merge] 사전 교정이 적용된 줄 수: 30
+

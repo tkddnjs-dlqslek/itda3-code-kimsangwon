@@ -30,6 +30,7 @@ DB_PATH = os.path.join(HERE, ".data", "items.db")
 STATIC = os.path.join(HERE, "static")
 MAX_SECONDS = 8.0            # 장당 상한. 단계 사이에서만 확인하므로 실제로는 한 단계 길이만큼 넘을 수 있다
 MID_SECONDS = 4.0            # 중간 재시도(mid) 상한. 아래 run_ocr 의 mode="mid" 설명 참고
+LISTING_MAX_SECONDS = 5.0    # 중고거래 검증 전체 모드 상한. 사진 5장 중 날짜 없는 장이 많으면 8초 × 장수로 40초대가 되어 5초로 줄임 (10-01 케이스 실측 case2 48초, case6 55초)
 # 플랫폼 설정값. 식약처 시범사업 초기 기준(2024-05) 6개월, 2025-05 부터 소비기한 내로 완화. 발표와 시연은 6 으로
 MIN_MONTHS = 6
 LISTING_THRESHOLD = 0.80  # 중고거래 검증용. 2폴드 실측: 0.90 → 자동 통과 72.8~86.0%, 정답률 98.1~96.3% / 0.80 → 자동 통과 88.4~91.0%, 정답률 95.0~95.6%. 플랫폼 사후 모니터링이 남아 있어 0.80 채택 (10-01)
@@ -39,6 +40,7 @@ _db_lock = threading.Lock()
 
 def run_ocr(path: str, mode: str = "full") -> dict:
     """mode="full": 채점 노트북과 같은 전체 재시도 (장당 상한 8초).
+    mode="listing": 중고거래 검증용 전체 재시도 (장당 상한 5초).
     mode="cheap": 스캐너 직후 1차 촬영용. s1, s2, det5 까지만 보고 날짜가 없으면 바로 NONE 을 돌려준다.
     mode="mid": 1차와 전체 사이. det5 까지 보고도 없으면 침식(erode5) 한 번을 더 시도한다.
     회전, 침식, 확대는 "날짜가 화면에 있는데 안 읽힐 때" 쓰는 단계라, 날짜 면이 아예 안 보이는 1차 사진에
@@ -55,6 +57,8 @@ def run_ocr(path: str, mode: str = "full") -> dict:
     with _ocr_lock:
         if mode == "full":
             return pipeline.predict_one(path, strict=False, retry_upscale=True, max_seconds=MAX_SECONDS)
+        if mode == "listing":
+            return pipeline.predict_one(path, strict=False, retry_upscale=True, max_seconds=LISTING_MAX_SECONDS)
         import ocr
         from dateparse import extract_date
         if mode == "mid":
@@ -123,7 +127,7 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
             f.write(image.file.read())
             tmp = f.name
         try:
-            row = run_ocr(tmp, "full")
+            row = run_ocr(tmp, "listing")
             assessed = confidence.assess(row["texts"], row["stage"], row["year"], row["month"], row["day"], table, threshold=LISTING_THRESHOLD)
         except Exception:                     # 이미지가 아니거나 디코딩 실패: 500 대신 운영자 확인으로
             row = {"year": "NONE", "month": "NONE", "day": "NONE", "final_date": "NONE", "stage": "error", "texts": []}
@@ -196,8 +200,8 @@ def create_app(db_path: str = DB_PATH) -> FastAPI:
                 if results[i]["year"] != "NONE" and results[i]["month"] != "NONE":
                     continue
                 p0 = time.time()
-                row, assessed = read_one(tmp, "full")
-                photos[i] = to_photo(i, row, assessed, "full", int((time.time() - p0) * 1000))
+                row, assessed = read_one(tmp, "listing")
+                photos[i] = to_photo(i, row, assessed, "listing", int((time.time() - p0) * 1000))
                 results[i] = to_result(i, row, assessed)
 
             lv = verify.listing_verdict(results, datetime.date.today(), MIN_MONTHS)

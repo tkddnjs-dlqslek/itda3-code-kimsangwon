@@ -37,3 +37,27 @@ def test_run_ocr_cheap_still_uses_cheap_stage_cap(monkeypatch):
 
     retry_upscale, stage_cap, _ = seen["args"]
     assert (retry_upscale, stage_cap) == (False, "cheap")
+
+
+def test_run_ocr_listing_and_full_max_seconds(monkeypatch):
+    """run_ocr(path, "listing")이 max_seconds=5.0을 전달하고,
+    run_ocr(path, "full")이 max_seconds=8.0을 전달하는지 확인한다."""
+    import sys
+    seen = {}
+
+    def fake_predict_one(path, strict=False, retry_upscale=False, max_seconds=8.0):
+        seen["max_seconds"] = max_seconds
+        return {"image_id": "test", "year": "2026", "month": "09", "day": "25", "final_date": "2026-09-25",
+                "stage": "s1", "texts": [], "raw": "[]"}
+
+    # pipeline 모듈을 가짜로 만들기
+    class FakePipeline:
+        predict_one = staticmethod(fake_predict_one)
+
+    monkeypatch.setitem(sys.modules, 'pipeline', FakePipeline())
+
+    row = server.run_ocr("frame.jpg", "listing")
+    assert seen["max_seconds"] == 5.0
+
+    row = server.run_ocr("frame.jpg", "full")
+    assert seen["max_seconds"] == 8.0

@@ -1,0 +1,31 @@
+gold rows = 1000
+hybrid: 1000 rows loaded from C:\Users\user\Desktop\ITDA 공모전\repo\tools\..\labels\auto_gold_v5.csv
+ko: 1000 rows loaded from C:\Users\user\Desktop\ITDA 공모전\repo\tools\..\labels\auto_gold_v5_ko.csv
+merge: 1000 rows loaded from C:\Users\user\Desktop\ITDA 공모전\repo\tools\..\labels\auto_gold_v5_merge.csv
+common ids (gold + all 3 modes present) = 1000
+
+mode         exact    exact%   field_avg
+hybrid         878     87.8%      0.9130
+ko             821     82.1%      0.8750
+merge          871     87.1%      0.9107
+
+hybrid stage counts: s1=779, fail=54, det5=45, erode5=33, clahe=26, s2=25, hires=10, erode3=9, up2x=8, rot90=7, rot270=2, rot180=2
+ko stage counts: s1=726, fail=64, det5=51, erode5=47, clahe=34, s2=27, erode3=20, hires=10, rot90=8, up2x=8, rot180=3, rot270=2
+merge stage counts: s1=781, det5=48, fail=48, erode5=30, clahe=28, s2=27, hires=10, up2x=9, erode3=8, rot90=7, rot180=2, rot270=2
+
+ko correct & hybrid wrong (18): 000018, 000032, 000054, 000088, 000192, 000200, 000310, 000392, 000416, 000572, 000583, 000777, 000804, 000858, 000865, 000945, 000992, 000994
+hybrid correct & ko wrong (75): 000034, 000039, 000042, 000044, 000060, 000061, 000064, 000094, 000103, 000106, 000118, 000203, 000228, 000233, 000244, 000245, 000263, 000276, 000303, 000309, 000313, 000317, 000361, 000368, 000369, 000378, 000381, 000423, 000428, 000446, 000467, 000468, 000474, 000489, 000534, 000544, 000549, 000553, 000579, 000580, 000592, 000604, 000629, 000650, 000695, 000722, 000732, 000752, 000757, 000763, 000769, 000775, 000786, 000789, 000794, 000805, 000813, 000815, 000822, 000825, 000826, 000837, 000848, 000849, 000853, 000856, 000860, 000903, 000921, 000931, 000932, 000943, 000955, 000973, 000993
+
+merge correct & hybrid wrong (5): 000054, 000572, 000777, 000992, 000994
+hybrid correct & merge wrong (12): 000106, 000617, 000629, 000694, 000757, 000763, 000786, 000789, 000805, 000837, 000921, 000993
+
+ko correct & merge wrong (15): 000018, 000032, 000088, 000192, 000200, 000310, 000392, 000416, 000583, 000617, 000694, 000804, 000858, 000865, 000945
+merge correct & ko wrong (65): 000034, 000039, 000042, 000044, 000060, 000061, 000064, 000094, 000103, 000118, 000203, 000228, 000233, 000244, 000245, 000263, 000276, 000303, 000309, 000313, 000317, 000361, 000368, 000369, 000378, 000381, 000423, 000428, 000446, 000467, 000468, 000474, 000489, 000534, 000544, 000549, 000553, 000579, 000580, 000592, 000604, 000650, 000695, 000722, 000732, 000752, 000769, 000775, 000794, 000813, 000815, 000822, 000825, 000826, 000848, 000849, 000853, 000856, 000860, 000903, 000931, 000932, 000943, 000955, 000973
+
+hybrid: hanja images=298 hanja lines=455 keyword+date lines=186
+ko: hanja images=0 hanja lines=0 keyword+date lines=368
+merge: hanja images=0 hanja lines=0 keyword+date lines=369
+
+ko: avg 3.51 s/img over 1000 rows (CPU shared with other jobs, rough)
+merge: avg 2.22 s/img over 1000 rows (CPU shared with other jobs, rough)
+hybrid: 2.56 s/img (from C:\Users\user\Desktop\ITDA 공모전\repo\tools\..\labels\autolabel_gold_v5.log, CPU shared with other jobs, rough)

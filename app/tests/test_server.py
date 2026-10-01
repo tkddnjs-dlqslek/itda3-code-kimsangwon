@@ -146,14 +146,14 @@ def test_verify_ocr_exception_becomes_review(client, monkeypatch):
     assert body["final_date"] == "NONE" and body["confidence"] is None
 
 
-def test_verify_uses_full_mode(client, monkeypatch):
+def test_verify_uses_listing_mode(client, monkeypatch):
     seen = {}
     def fake(path, mode="full"):
         seen["mode"] = mode
         return dict(STUB)
     monkeypatch.setattr(server, "run_ocr", fake)
     client.post("/api/verify", files={"image": ("a.jpg", b"fake", "image/jpeg")})
-    assert seen["mode"] == "full"
+    assert seen["mode"] == "listing"
 
 
 def _photos(n, name="a.jpg"):
@@ -216,10 +216,10 @@ def test_verify_listing_full_pass_only_for_none_photos(client, monkeypatch):
     monkeypatch.setattr(server, "run_ocr", fake)
     r = client.post("/api/verify_listing", files=_photos(2))
     body = r.json()
-    assert sum(1 for _, mode in calls if mode == "full") == 1
+    assert sum(1 for _, mode in calls if mode == "listing") == 1
     assert body["passes"] == 2
     assert body["photos"][0]["final_date"] == "2099-12-31" and body["photos"][0]["mode"] == "cheap"
-    assert body["photos"][1]["final_date"] == "2030-05-10" and body["photos"][1]["mode"] == "full"
+    assert body["photos"][1]["final_date"] == "2030-05-10" and body["photos"][1]["mode"] == "listing"
 
 
 def test_verify_listing_block_in_cheap_pass_skips_full(client, monkeypatch):
@@ -246,7 +246,7 @@ def test_verify_listing_all_none_tries_full_then_reviews(client, monkeypatch):
     monkeypatch.setattr(server, "run_ocr", fake)
     r = client.post("/api/verify_listing", files=_photos(2))
     body = r.json()
-    assert calls.count("full") == 2
+    assert calls.count("listing") == 2
     assert body["verdict"] == "review" and body["passes"] == 2
 
 
