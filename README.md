@@ -119,18 +119,21 @@ jupyter nbconvert --to notebook --execute predict.ipynb \
 
 ## 6-3. 본선 검수 재현 로그
 
-`logs/finals_run_log.txt` 는 순정 `ubuntu:22.04` 컨테이너(`docker run --cpus 4 --memory 8g`, apt 로 python3.10 만 설치)에서
-이 저장소의 커밋 4ca5b27 을 풀어 놓고 본선 안내 명령을 순서대로 실행한 기록입니다.
+`logs/finals_run_log.txt` 는 순정 `ubuntu:22.04` 컨테이너(`docker run --cpus 4 --memory 8g`, apt 로
+python3.10, git, curl 만 설치)에서 GitHub 원격 저장소(`itda3-code-kimsangwon`)를 새로 `git clone` 하여
+이 저장소의 커밋 85a88a5 를 체크아웃하고 본선 안내 명령을 순서대로 실행한 기록입니다. 로컬 바인드 마운트가
+아니라 push 된 원격 저장소를 그대로 clone 했으므로, 공개 저장소가 정상 동작함을 증명합니다.
 
 ```bash
 python3.10 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # 268초
-bash download_weights.sh                 # 32초, 가중치 4개
-ITDA_INPUT_DIR=./sample ITDA_OUTPUT_PATH=/tmp/out.csv   jupyter nbconvert --to notebook --execute predict.ipynb --output /tmp/executed.ipynb   # 28초, 종료 코드 0
+pip install -r requirements.txt          # 52초
+bash download_weights.sh                 # 22초, 가중치 4개
+ITDA_INPUT_DIR=./sample ITDA_OUTPUT_PATH=/tmp/out.csv   jupyter nbconvert --to notebook --execute predict.ipynb --ExecutePreprocessor.timeout=2400 --output /tmp/executed.ipynb   # 31초, 종료 코드 0
 ```
 
 `sample/` 9장의 출력은 `sample/README.md` 의 기대값과 전부 일치합니다. 로그의 `16 cores` 는 컨테이너가 보는 호스트
-코어 수이고 실제 CPU 할당은 `--cpus 4` 입니다. 코드가 바뀌면 로그도 다시 만듭니다.
+코어 수이고 실제 CPU 할당은 `--cpus 4` 입니다. `ubuntu:22.04` 기본 이미지에는 `curl` 이 없어
+`download_weights.sh` 실행을 위해 apt 로 추가 설치했습니다. 코드가 바뀌면 로그도 다시 만듭니다.
 
 ## 7. 테스트
 
