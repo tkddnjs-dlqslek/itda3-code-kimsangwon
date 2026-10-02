@@ -165,7 +165,7 @@ def test_verify_listing_allows_with_two_good_photos(client, monkeypatch):
     r = client.post("/api/verify_listing", files=_photos(2), data={"product_name": "비타민C"})
     assert r.status_code == 200
     body = r.json()
-    assert body["verdict"] == "allow" and body["min_months"] == 6 and body["product_name"] == "비타민C"
+    assert body["verdict"] == "allow" and body["min_months"] == 0 and body["product_name"] == "비타민C"
     assert len(body["photos"]) == 2 and body["min_photo"] in (0, 1)
 
 
@@ -182,7 +182,7 @@ def test_verify_listing_blocks_on_shortest_photo(client, monkeypatch):
     r = client.post("/api/verify_listing", files=_photos(2))
     body = r.json()
     assert body["verdict"] == "block" and body["min_photo"] == 0
-    assert "6개월" in body["reason"]
+    assert "지난 상품" in body["reason"]
     assert len(calls) == 2
 
 

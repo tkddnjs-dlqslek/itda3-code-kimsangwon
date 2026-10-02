@@ -76,7 +76,7 @@ function show(d) {
     return Object.assign(document.createElement("li"), { textContent: text });
   }));
   if (d.verdict === "block") {
-    openModal(`소비기한(유통기한)이 ${d.min_months}개월 이상 남을 때만 업로드 가능합니다`);
+    openModal(d.min_months > 0 ? `소비기한(유통기한)이 ${d.min_months}개월 이상 남을 때만 업로드 가능합니다` : "소비기한이 지난 상품은 업로드할 수 없습니다");
   } else if (d.verdict === "review" && d.min_photo == null) {
     openModal("소비기한 표시 부분이 보이는 사진을 추가해 주십시오");
   }

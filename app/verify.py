@@ -62,6 +62,7 @@ def listing_verdict(results: list[dict], today: datetime.date, min_months: int) 
     dated.sort(key=lambda iv: iv[1]["deadline"])
     index, v = dated[0]
     if v["verdict"] == "block":
-        v = {**v, "reason": f"소비기한(유통기한)이 {min_months}개월 이상 남을 때만 업로드 가능합니다"}
+        v = {**v, "reason": ("소비기한이 지난 상품은 업로드할 수 없습니다" if min_months == 0
+                             else f"소비기한(유통기한)이 {min_months}개월 이상 남을 때만 업로드 가능합니다")}
     return {**v, "min_photo": index,
             "dates": [{"index": i, "deadline": vv["deadline"], "months_left": vv["months_left"]} for i, vv in dated]}
